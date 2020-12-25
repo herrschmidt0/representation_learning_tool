@@ -1,0 +1,8 @@
+{
+	"pytorch": {
+		"imports": "import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torch.nn.functional as F\nimport torch.backends.cudnn as cudnn\nimport torchvision\nimport torchvision.transforms as transforms",
+		"networks": {
+			"resnet18": "./resnet18.py"
+		}
+	}
+}
