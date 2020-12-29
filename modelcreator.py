@@ -8,6 +8,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 
 import torch
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 class ModelCreator(QTabWidget):
 
@@ -84,22 +86,39 @@ class ModelCreator(QTabWidget):
 			self.setLayout(layout)
 
 			# Add network definition
-			self.label_network = QLabel('Network definition')
+			label_network = QLabel('Network definition')
 			self.textedit_network = QTextEdit()
 			self.textedit_network.setFixedHeight(500)
 
+			# Model buttons
+			widget_import_buttons = QWidget()
+			layout_import_buttons = QHBoxLayout()
+			widget_import_buttons.setLayout(layout_import_buttons)
+
 			# Load state dict file
-			self.button_import = QPushButton('Import model')
-			self.button_import.clicked.connect(self.open_browser)
-			self.button_import.setMaximumWidth(150)
+			button_import = QPushButton('Import model weights')
+			button_import.clicked.connect(self.fun_import_model)
+			button_import.setMaximumWidth(200)
+			layout_import_buttons.addWidget(button_import)
 
-			layout.addWidget(self.label_network)
+			button_load_networkdef = QPushButton('Load network definition')
+			button_load_networkdef.clicked.connect(self.fun_load_networkdef)
+			button_load_networkdef.setMaximumWidth(200)
+			layout_import_buttons.addWidget(button_load_networkdef)
+
+			button_save_networkdef = QPushButton('Save network definition')
+			button_save_networkdef.clicked.connect(self.fun_save_networkdef)
+			button_save_networkdef.setMaximumWidth(200)
+			layout_import_buttons.addWidget(button_save_networkdef)
+
+
+			layout.addWidget(label_network)
 			layout.addWidget(self.textedit_network)
-			layout.addWidget(self.button_import)
+			layout.addWidget(widget_import_buttons)
 
-		def open_browser(self):
+		def fun_import_model(self):
 			
-			fname = QFileDialog.getOpenFileName(self, 'Open file', '\\',"Model files (*.pth *.onnx)")
+			fname = QFileDialog.getOpenFileName(self, 'Open file', '\\',"Model files (*.pth *.pt *.onnx)")
 			extension = os.path.splitext(fname[0])[1]
 
 			# Pytorch state dict
@@ -125,13 +144,29 @@ class ModelCreator(QTabWidget):
 				'''
 				try:
 					model = Model()
-					model = torch.nn.DataParallel(model)
+					model = model.to(device)
+					#model = torch.nn.DataParallel(model)
 
 					data = torch.load(fname[0])
 					model.load_state_dict(data['net'])
+					#model = model.to(device)
 					model.eval()
 				except Exception as e:
 					print(e)
 
 				#print(type(model.named_parameters()))
 				self.outerInstance.signal_model_ready.emit(model)
+
+
+		def fun_load_networkdef(self):
+			fname = QFileDialog.getOpenFileName(self, 'Open file', '\\',"Source files (*.py)")
+
+			with open(fname[0], 'r') as f:
+				self.textedit_network.setText(f.read())
+
+		def fun_save_networkdef(self):
+			fname = QFileDialog.getSaveFileName(self, 'Save file', '\\',"Source files (*.py)")
+
+			source_code = self.textedit_network.toPlainText()
+			with open(fname[0], 'w') as f:
+				f.write(source_code)
