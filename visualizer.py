@@ -4,6 +4,7 @@ import os
 import traceback
 from graphviz import Graph
 import numpy as np
+from sklearn.metrics import classification_report
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -19,6 +20,8 @@ import torchvision.transforms as transforms
 from torchviz import make_dot, resize_graph
 from framelayout import FrameLayout
 from torch_pruning import ThresholdPruning
+import config
+
 
 class Visualizer(QTabWidget):
 
@@ -26,10 +29,12 @@ class Visualizer(QTabWidget):
 		super().__init__()
 
 		self.tab_overview = self.OverviewTab()
+		self.tab_testresults = self.TestResultsTab()
 		self.tab_graph = self.GraphTab()
 		self.tab_pruning = self.PruningTab()
 
 		self.addTab(self.tab_overview, 'Overview')
+		self.addTab(self.tab_testresults, 'Test results')
 		self.addTab(self.tab_graph, 'Graph')
 		self.addTab(self.tab_pruning, 'Pruning')
 		self.addTab(QLabel('viz 3'), 'Tab 3')
@@ -43,11 +48,13 @@ class Visualizer(QTabWidget):
 	    current = self.currentWidget()
 	    current.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
-	@pyqtSlot(object)
-	def receive_model(self, model):
+	#@pyqtSlot(object, object)
+	def receive_dataset_model(self, dataset, model):
 		self.model = model
+		self.dataset = dataset
 
 		self.tab_overview.update(model)
+		self.tab_testresults.update(dataset, model)
 		self.tab_graph.update(model)
 		self.tab_pruning.update(model)
 
@@ -83,6 +90,59 @@ class Visualizer(QTabWidget):
 					combobox_filters.currentIndexChanged.connect(filter_selected)
 
 				self.layout.addWidget(container)
+
+	
+	class TestResultsTab(QWidget):
+		batch_size = 32
+
+		def __init__(self):
+			super().__init__()
+
+			layout = QVBoxLayout()
+			self.setLayout(layout)
+
+			self.label_results = QLabel()
+			layout.addWidget(self.label_results)
+
+		def update(self, dataset, model):
+
+			# Define dataset loader
+			if isinstance(dataset, str):
+				dataset = dataset.lower()
+				if dataset in config_dataset:
+					test_dataset = config_dataset[dataset]["datasets"][1]
+				
+					test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
+					                                          batch_size=self.batch_size, 
+					                                          shuffle=True)
+					transform = config_dataset[dataset]["transform"]
+
+			# Test model on dataset
+			model.eval()
+			y_true = []
+			y_pred = []
+			with torch.no_grad():
+				correct = 0
+				total = 0
+				for images, labels in test_loader:
+					images = transform(images)
+					images = images.to(device)
+					labels = labels.to(device)
+
+					outputs = model(images)
+					_, predicted = torch.max(outputs.data, 1)
+					total += labels.size(0)
+					correct += (predicted == labels).sum().item()
+
+					y_true += labels.tolist()
+					y_pred += predicted.tolist()
+					#print(labels.data, predicted)
+
+				accuracy = correct / total
+
+			# Display results
+			report = classification_report(y_true, y_pred)
+			self.label_results.setText(report)	
 
 	class GraphTab(QWidget):
 		def __init__(self):

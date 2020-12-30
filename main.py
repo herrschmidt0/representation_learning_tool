@@ -13,26 +13,28 @@ print(device)
 
 from visualizer import Visualizer
 from modelcreator import ModelCreator
+from dataset import DatasetLoader
 
 class MainWindow(QMainWindow):
 
 	def __init__(self):
 		super().__init__()
 
-
 		# Scroll area inner contents
 		body = QWidget()
 		body_layout = QVBoxLayout()
 		body.setLayout(body_layout)
 
+		self.dataset_loader = DatasetLoader()
 		self.model_creator = ModelCreator()
-
 		self.visualizer = Visualizer()
 
+		body_layout.addWidget(self.dataset_loader)
 		body_layout.addWidget(self.model_creator)
 		body_layout.addWidget(self.visualizer)
 
-		self.model_creator.signal_model_ready.connect(self.visualizer.receive_model)
+		self.dataset_loader.signal_dataset_ready.connect(self.receive_dataset)
+		self.model_creator.signal_model_ready.connect(self.receive_model)
 
 		# Add scrollbar
 		scrollArea = QScrollArea()
@@ -55,8 +57,26 @@ class MainWindow(QMainWindow):
 		self.setCentralWidget(centralw)
 		self.show()
 
+		# Load config
+		with open('config.json') as json_file:
+			self.config = json.load(json_file)
 
+	@pyqtSlot(object)
+	def receive_dataset(self, dataset):
+		self.dataset = dataset
 
+		if isinstance(dataset, str):
+			dataset = dataset.lower()
+			if dataset in self.config:
+				self.model_path = self.config[dataset]['network-def']
+				self.weights_path = self.config[dataset]['weights']
+
+				self.model_creator.receive_dataset_model(self.dataset, self.model_path, self.weights_path)
+
+	@pyqtSlot(object)
+	def receive_model(self, model):
+
+		self.visualizer.receive_dataset_model(self.dataset, model)
 
 if __name__ == '__main__':
 	app = QApplication([])
