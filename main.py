@@ -11,9 +11,11 @@ import torch
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(device)
 
-from visualizer import Visualizer
-from modelcreator import ModelCreator
 from dataset import DatasetLoader
+from modelcreator import ModelCreator
+from modeltransformer import ModelTransformer
+from visualizer import Visualizer
+import config
 
 class MainWindow(QMainWindow):
 
@@ -27,14 +29,17 @@ class MainWindow(QMainWindow):
 
 		self.dataset_loader = DatasetLoader()
 		self.model_creator = ModelCreator()
+		self.model_transformer = ModelTransformer()
 		self.visualizer = Visualizer()
 
 		body_layout.addWidget(self.dataset_loader)
 		body_layout.addWidget(self.model_creator)
+		body_layout.addWidget(self.model_transformer)
 		body_layout.addWidget(self.visualizer)
 
 		self.dataset_loader.signal_dataset_ready.connect(self.receive_dataset)
-		self.model_creator.signal_model_ready.connect(self.receive_model)
+		self.model_creator.signal_model_ready.connect(self.receive_created_model)
+		self.model_transformer.signal_model_ready.connect(self.receive_transformed_model)
 
 		# Add scrollbar
 		scrollArea = QScrollArea()
@@ -57,26 +62,27 @@ class MainWindow(QMainWindow):
 		self.setCentralWidget(centralw)
 		self.show()
 
-		# Load config
-		with open('config.json') as json_file:
-			self.config = json.load(json_file)
 
 	@pyqtSlot(object)
 	def receive_dataset(self, dataset):
+		dataset = dataset.lower()
 		self.dataset = dataset
 
 		if isinstance(dataset, str):
-			dataset = dataset.lower()
-			if dataset in self.config:
-				self.model_path = self.config[dataset]['network-def']
-				self.weights_path = self.config[dataset]['weights']
-
-				self.model_creator.receive_dataset_model(self.dataset, self.model_path, self.weights_path)
+			if dataset in config.config:
+				self.model_creator.receive_dataset_model(dataset)
 
 	@pyqtSlot(object)
-	def receive_model(self, model):
+	def receive_created_model(self, model):
+
+		self.model_transformer.receive_model(model)
+		self.visualizer.receive_dataset_model(self.dataset, model)
+
+	@pyqtSlot(object)
+	def receive_transformed_model(self, model):
 
 		self.visualizer.receive_dataset_model(self.dataset, model)
+
 
 if __name__ == '__main__':
 	app = QApplication([])

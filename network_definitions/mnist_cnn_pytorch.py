@@ -1,11 +1,3 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torch.backends.cudnn as cudnn
-import torchvision
-import torchvision.transforms as transforms
-global Model
 class Model(nn.Module):
     def __init__(self):
         super(Model, self).__init__()

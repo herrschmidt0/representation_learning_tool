@@ -58,6 +58,7 @@ class DatasetLoader(QTabWidget):
 			self.setLayout(layout)
 
 			self.dropwdown_dataset = QComboBox()
+			self.dropwdown_dataset.setMaximumWidth(180)
 			self.dropwdown_dataset.addItem('MNIST-1D')
 			self.dropwdown_dataset.addItem('MNIST-2D')
 

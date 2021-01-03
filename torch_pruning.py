@@ -1,5 +1,5 @@
+import torch
 from torch.nn.utils import prune
-
 
 class ThresholdPruning(prune.BasePruningMethod):
     PRUNING_TYPE = "unstructured"
