@@ -21,6 +21,7 @@ from torchviz import make_dot, resize_graph
 from framelayout import FrameLayout
 from torch_pruning import ThresholdPruning
 import config
+from utils import MplCanvas, StackedWidgetWithComboBox
 
 
 class Visualizer(QTabWidget):
@@ -66,6 +67,8 @@ class Visualizer(QTabWidget):
 
 		def update(self, model):
 			
+			#print(self.dataset)
+
 			# Remove previous data
 			for i in reversed(range(self.layout.count())): 
 				self.layout.itemAt(i).widget().setParent(None)
@@ -75,7 +78,6 @@ class Visualizer(QTabWidget):
 
 			for child in model.children():
 				
-
 				if isinstance(child, torch.nn.Linear):
 					layer_type = 'Linear'
 				elif isinstance(child, torch.nn.Conv2d):
@@ -86,43 +88,152 @@ class Visualizer(QTabWidget):
 					layer_type = '2D Dropout'
 				else:
 					layer_type = 'Unknown'
-					'''
-					container.addWidget(QLabel('Browse filters:'))
-					combobox_filters = QComboBox()
-					combobox_filters.addItems([('Filter '+str(i)) for i in range(parameter.shape[0])])
-					container.addWidget(combobox_filters)
-					label_weights = QLabel()
-					container.addWidget(label_weights)
 
-					def filter_selected(i):
-						print(parameter.shape)
-						iiid_filter = parameter.narrow(1, 0, parameter.shape[1])
-						iiid_filter_print = Variable(iiid_filter).data[0]
-						label_weights.setText(iiid_filter_print)
-					combobox_filters.currentIndexChanged.connect(filter_selected)
-					'''
 				name = layer_type + ' layer'
 				container = FrameLayout(title=name)
 				container.addWidget(QLabel('Layer type: %s' % layer_type))
 
 				for name, parameter in child.named_parameters():
 
+					# Parameter name, shape
 					container.addWidget(QLabel('Parameter name: {0}'.format(name)))
 					container.addWidget(QLabel('Parameter shape: {0}'.format(parameter.shape,)))
 
+					# Statistical data about the weight matrices/vectors
 					param_np = (parameter.cpu()).detach().numpy()
-					container.addWidget(QLabel('Mean of weights: {:.3f}'.format(np.mean(param_np))))
-					container.addWidget(QLabel('Std of weights: {:.3f}'.format(np.std(param_np))))
-					container.addWidget(QLabel('Min of weights: {:.3f}'. format(np.min(param_np))))
-					container.addWidget(QLabel('Max of weights: {:.3f}'. format(np.max(param_np))))
-					container.addWidget(QLabel(' '))
 
+					weight_statistics = self.WeightStatistics(param_np)
+					container.addWidget(weight_statistics)
+
+					# Selector for further diagrams/tables/info 
+					stacked_combo = StackedWidgetWithComboBox()
+					container.addWidget(stacked_combo)
+					
+
+					if isinstance(child, torch.nn.Linear):
+
+						weights_dist = self.WeightDistribution(param_np)
+						stacked_combo.addItem(weights_dist, 'Distribution of weights')
+
+						if name == 'weight':
+							node_sums = self.WeightSumsNodeWise(param_np)
+							stacked_combo.addItem(node_sums, 'Sum of weights for each node')				
+
+					elif isinstance(child, torch.nn.Conv2d):
+						if name == 'weight':
+							print(param_np.shape)
+
+							table_norms = self.FilterNormsTable(param_np)
+							stacked_combo.addItem(table_norms, 'L1 norms of filters')
+
+							table_svds = self.FilterSVDsTable(param_np)
+							stacked_combo.addItem(table_svds, 'Singular values of filters')
+
+						if name == 'bias':
+							weights_dist = self.WeightDistribution(param_np)
+							stacked_combo.addItem(weights_dist, 'Distribution of weights')
+
+							'''
+							container.addWidget(QLabel('Browse filters:'))
+							combobox_filters = QComboBox()
+							combobox_filters.addItems([('Filter '+str(i)) for i in range(parameter.shape[0])])
+							container.addWidget(combobox_filters)
+							label_weights = QLabel()
+							container.addWidget(label_weights)
+
+							def filter_selected(i):
+								print(parameter.shape)
+								iiid_filter = parameter.narrow(1, 0, parameter.shape[1])
+								iiid_filter_print = Variable(iiid_filter).data[0]
+								label_weights.setText(iiid_filter_print)
+							combobox_filters.currentIndexChanged.connect(filter_selected)
+							'''
+
+					container.addWidget(QLabel(' '))
 				self.layout.addWidget(container)
 
 
 			print('Model overview updated.')
 
 	
+		class WeightStatistics(QWidget):
+			def __init__(self, weight):
+				super().__init__()
+				layout = QVBoxLayout()
+				self.setLayout(layout)
+
+				nonzero_weights = np.count_nonzero(weight)
+				total_weights = weight.size
+				layout.addWidget(QLabel('Number of non-zero weights: {} ({:.1f}%)'.format(nonzero_weights, 100*nonzero_weights/total_weights)))
+				layout.addWidget(QLabel('Mean of weights: {:.3f}'.format(np.mean(weight))))
+				layout.addWidget(QLabel('Std of weights: {:.3f}'.format(np.std(weight))))
+				layout.addWidget(QLabel('Min of weights: {:.3f}'.format(np.min(weight))))
+				layout.addWidget(QLabel('Max of weights: {:.3f}'.format(np.max(weight))))
+
+		class WeightDistribution(QWidget):
+			def __init__(self, weight):
+				super().__init__()
+				layout = QVBoxLayout()
+				self.setLayout(layout)
+
+				percentile_90 = np.percentile(weight, 90)
+				percentile_10 = np.percentile(weight, 10)
+
+				weights_dist = MplCanvas(self, width=5, height=4)
+				weights_dist.axes.hist(weight.reshape(-1), bins=50, range=(percentile_10, percentile_90))
+				weights_dist.axes.set_title('Distribution of weights (from 10 percentile to 90)')
+
+				layout.addWidget(weights_dist)
+
+		class WeightSumsNodeWise(QWidget):
+			def __init__(self, weight):
+				super().__init__()
+				layout = QVBoxLayout()
+				self.setLayout(layout)
+
+				row_sums = [np.sum(np.absolute(row)) for row in weight]
+				node_sums = MplCanvas(self, width=5, height=4)
+				node_sums.axes.plot(row_sums)
+				node_sums.axes.set_title('Sum of weights for each node')
+
+				layout.addWidget(node_sums)
+
+		class FilterNormsTable(QTableWidget):
+			def __init__(self, weight, norm=1):
+				super().__init__()
+
+				nr_of_channels = weight.shape[0]
+				nr_of_input_channels = weight.shape[1]
+
+				self.setRowCount(nr_of_channels)
+				self.setColumnCount(nr_of_input_channels)
+
+				for i in range(nr_of_channels):
+					for j in range(nr_of_input_channels):
+						l1_norm = np.linalg.norm(np.reshape(weight[i][j], (-1,)), ord=norm)
+						cell = QTableWidgetItem("{:.2f}".format(l1_norm))
+						cell.setFlags(Qt.ItemIsEnabled)
+						self.setItem(i, j, cell)							
+
+		class FilterSVDsTable(QTableWidget):
+			def __init__(self, weight, norm=1):
+				super().__init__()
+
+				nr_of_channels = weight.shape[0]
+				nr_of_input_channels = weight.shape[1]
+
+				self.setRowCount(nr_of_channels)
+				self.setColumnCount(nr_of_input_channels)
+
+				for i in range(nr_of_channels):
+					for j in range(nr_of_input_channels):
+						
+						svds = np.linalg.svd(weight[i][j], compute_uv=False)
+
+						cell = QTableWidgetItem(str(["{:.2f}".format(sv) for sv in svds]))
+						cell.setFlags(Qt.ItemIsEnabled)
+						self.setItem(i, j, cell)	
+
 	class TestResultsTab(QWidget):
 		batch_size = 32
 

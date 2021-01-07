@@ -2,6 +2,7 @@ import json
 import sys
 import os
 import traceback
+import importlib
 
 from PyQt5.QtCore import Qt, QObject, QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -11,6 +12,8 @@ import torch
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 import config
+import network_def
+import train
 
 class ModelCreator(QTabWidget):
 
@@ -45,6 +48,12 @@ class ModelCreator(QTabWidget):
 			self.editor.textedit_network.setText(network_def)
 			self.importer.textedit_network.setText(network_def)
 
+		if 'train' in config.config[dataset]:
+			trainer_path = config.config[dataset]['train'] 
+			with open(trainer_path, 'r') as f:
+				train_code = f.read()
+			self.editor.textedit_train.setText(train_code)
+
 		if 'weights' in config.config[dataset]:
 			weights_path = config.config[dataset]['weights']
 			model = self.importer.construct_model(weights_path)
@@ -52,11 +61,6 @@ class ModelCreator(QTabWidget):
 			if model != -1:
 				self.signal_model_ready.emit(model)
 
-		if 'train' in config.config[dataset]:
-			trainer_path = config.config[dataset]['train'] 
-			with open(trainer_path, 'r') as f:
-				train_code = f.read()
-			self.editor.textedit_train.setText(train_code)
 
 	class EditorWidget(QWidget):
 
@@ -163,12 +167,11 @@ class ModelCreator(QTabWidget):
 				train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
 						                                   batch_size=batch_size, 
 						                                   shuffle=True)
-				from network_def import Model
-				model = Model()
+
+				model = network_def.Model()
 				model = model.to(device)
 
-				from train import train
-				model = train(train_loader, config.config[self.dataset]['transform'], model, num_epochs, learning_rate, device)
+				model = train.train(train_loader, config.config[self.dataset]['transform'], model, num_epochs, learning_rate, device)
 
 				self.finished_with_model.emit(model)
 
@@ -227,12 +230,13 @@ class ModelCreator(QTabWidget):
 			fname = QFileDialog.getOpenFileName(self, 'Open file', '\\',"Model files (*.pth *.pt *.onnx)")
 			
 			model = self.construct_model(fname[0])
+
 			if model != -1:
-				#print(type(model.named_parameters()))
 				self.outerInstance.signal_model_ready.emit(model)
 
 		def construct_model(self, path):
-
+			print('Constructing model from weights...')
+			
 			# Pytorch state dict
 			extension = os.path.splitext(path)[1]
 			if extension == '.pth' or extension == '.pt':
@@ -247,25 +251,19 @@ class ModelCreator(QTabWidget):
 
 				with open('network_def.py', 'w') as f:
 					f.write(code)
+				importlib.reload(network_def)
 
-				from network_def import Model
-				'''
 				try:
-					exec(code)
-				except Exception as e:
-					print(e)
-					traceback.print_exc(file=sys.stdout)
-				'''
-				try:
-					model = Model()
+					model = network_def.Model()
 					model = model.to(device)
 					#model = torch.nn.DataParallel(model)
 
 					data = torch.load(path)
-					model.load_state_dict(data['net'])
+					#model.load_state_dict(data['net'])
+					model.load_state_dict(data)
 					model.eval()
 				except Exception as e:
-					print(e)
+					print('Exception:', e)
 
 				return model
 			return -1
