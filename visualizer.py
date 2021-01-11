@@ -5,6 +5,7 @@ import traceback
 from graphviz import Graph
 import numpy as np
 from sklearn.metrics import classification_report
+import networkx as nx
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -31,12 +32,13 @@ class Visualizer(QTabWidget):
 
 		self.tab_overview = self.OverviewTab()
 		self.tab_testresults = self.TestResultsTab()
-		self.tab_graph = self.GraphTab()
+		self.tab_comp_graph = self.ComputationGraphTab()
+		self.tab_channel_graph = self.ChannelGraphTab()
 
 		self.addTab(self.tab_overview, 'Overview')
 		self.addTab(self.tab_testresults, 'Test results')
-		self.addTab(self.tab_graph, 'Graph')
-		self.addTab(QLabel('viz 3'), 'Tab 3')
+		self.addTab(self.tab_comp_graph, 'Computation Graph')
+		self.addTab(self.tab_channel_graph, 'Channel Graph')
 
 		self.currentChanged.connect(self.updateSizes)
 
@@ -55,8 +57,8 @@ class Visualizer(QTabWidget):
 
 		self.tab_overview.update(model)
 		self.tab_testresults.update(dataset, model)
-		self.tab_graph.update(model)
-
+		self.tab_comp_graph.update(model)
+		self.tab_channel_graph.update(model)
 
 	class OverviewTab(QWidget):
 		def __init__(self):
@@ -286,7 +288,7 @@ class Visualizer(QTabWidget):
 			self.label_results.setText(report)
 			print('Test results updated.')
 
-	class GraphTab(QWidget):
+	class ComputationGraphTab(QWidget):
 		def __init__(self):
 			super().__init__()
 
@@ -295,7 +297,6 @@ class Visualizer(QTabWidget):
 
 			self.widget_canvas = QLabel()			
 			layout.addWidget(self.widget_canvas)
-			#self.painter = QPainter(self.widget_canvas.pixmap())
 
 		def update(self, model):
 
@@ -324,12 +325,59 @@ class Visualizer(QTabWidget):
 
 			print('Computation graph updated.')
 
-			'''
-			pen = QPen()
-			pen.setWidth(40)
-			pen.setColor(QColor('red'))
-			self.painter.setPen(pen)
 
-			self.painter.drawPoint(200, 150)
-			self.painter.end()
-			'''
+	class ChannelGraphTab(QWidget):
+		def __init__(self):
+			super().__init__()
+
+			layout = QVBoxLayout()
+			self.setLayout(layout)
+
+			self.canvas_graph = MplCanvas()
+			
+			self.label_longestpath = QLabel()
+
+			layout.addWidget(self.canvas_graph)
+			layout.addWidget(self.label_longestpath)
+
+		def update(self, model):
+
+			# Construct graph
+			G = nx.Graph()
+			for i, layer in enumerate(model.children()):
+				if isinstance(layer, torch.nn.Conv2d):
+
+					weight_matrix = (layer.weight.cpu()).detach().numpy()
+					# Add input channels
+					if i == 0:
+						for in_channel in range(layer.weight.shape[1]):
+							G.add_node("l{}_n{}".format(i, in_channel))
+
+					# Add channels
+					for out_channel in range(layer.weight.shape[0]):
+						G.add_node("l{}_n{}".format(i+1, out_channel))
+
+					# Add edges
+					for in_channel in range(layer.weight.shape[1]):
+						for out_channel in range(layer.weight.shape[0]):
+							in_node = "l{}_n{}".format(i, in_channel)
+							out_node = "l{}_n{}".format(i+1, out_channel)
+							edge_weight = np.linalg.norm(weight_matrix[out_channel][in_channel].reshape(-1), ord=1)
+							G.add_edge(in_node, out_node, weight=edge_weight)
+
+			# Heaviest path
+			source = "l0_n0"
+			dest = "l2_n0"
+			#paths = [path for path in nx.all_simple_paths(G, source, dest)]
+			#heaviest_path = max(paths, key=lambda path: get_weight(path))
+			# !!!! networkx.algorithms.shortest_paths.weighted.dijkstra_path
+
+
+			#self.label_longestpath.setText(str(heaviest_path))
+
+			# Draw graph . reeeeeeeeeee
+
+			# https://gist.github.com/craffel/2d727968c3aaebd10359
+			# https://stackoverflow.com/questions/58511546/in-python-is-there-a-way-to-use-networkx-to-display-a-neural-network-in-the-sta
+			nx.draw(G, ax=self.canvas_graph.axes)
+			self.canvas_graph.draw_idle()

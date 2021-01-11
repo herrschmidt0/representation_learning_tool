@@ -15,7 +15,7 @@ class ThresholdPruning(prune.BasePruningMethod):
 		else:
 			return tensor > self.threshold
 
-
+'''
 class NodeWisePruning(prune.BasePruningMethod):
 	PRUNING_TYPE = "unstructured"
 
@@ -39,3 +39,4 @@ class NodeWisePruning(prune.BasePruningMethod):
 		pruned = tensor * mask.float()
 		#print(pruned)
 		return torch.reshape(pruned, (-1,))
+'''

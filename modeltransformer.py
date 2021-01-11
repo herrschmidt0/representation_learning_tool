@@ -4,6 +4,7 @@ import os
 import traceback
 import copy
 import numpy as np
+import networkx as nx
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -18,7 +19,7 @@ import torchvision.transforms as transforms
 from torch.nn.utils import prune
 
 import config
-from torch_pruning import ThresholdPruning, NodeWisePruning
+from torch_pruning import ThresholdPruning
 
 
 class ModelTransformer(QTabWidget):
@@ -191,10 +192,21 @@ class ModelTransformer(QTabWidget):
 					self.edit_value = QLineEdit()
 					self.edit_value.setMaximumWidth(150)
 
+					self.checkbox_perc = QCheckBox('Percentage')
+					self.checkbox_perc.setChecked(True)
+
 					layout.addWidget(label_combo)
 					layout.addWidget(self.combo_measure)
 					layout.addWidget(label_value)
 					layout.addWidget(self.edit_value)
+					layout.addWidget(self.checkbox_perc)
+
+				def getValues(self):
+					return {
+						'threshold': self.edit_value.text(),
+						'percentage': self.checkbox_perc.isChecked(),
+						'norm': self.combo_measure.currentText()
+					}
 
 			def prune_model(self, params):
 
@@ -230,31 +242,61 @@ class ModelTransformer(QTabWidget):
 							else:
 								threshold = params['threshold']
 
-							# Prune
-							parameters_to_prune = [(child, 'weight')]
-							#prune.global_unstructured(parameters_to_prune, pruning_method=NodeWisePruning, threshold=threshold, shape=child.weight.shape)
-
-							#tensor = torch.reshape(tensor, self.shape)
+							
 							mask = torch.zeros_like(child.weight)
 							tensor_np = (child.weight.cpu()).detach().numpy()
 							
 							for i, row in enumerate(tensor_np):
 								abs_sum = np.sum(np.absolute(row))
-
-								#print(abs_sum, self.threshold)
 								if abs_sum > threshold:
 									mask[i, :] = 1
 
-							#pruned = child.weight * mask.float()
+							# Prune
+							#parameters_to_prune = [(child, 'weight')]
+							#prune.global_unstructured(parameters_to_prune, pruning_method=NodeWisePruning, threshold=threshold, shape=child.weight.shape)
 
 							prune.custom_from_mask(child, 'weight', mask)
-
-							#print(child.weight)
 							prune.remove(child, "weight")
 
 				elif self.method == 2:
 
-					pass
+					for child in self.model.children():
+						if isinstance(child, torch.nn.Conv2d):
+
+							tensor_np = (child.weight.cpu()).detach().numpy()
+
+							# Set norm calculator
+							if params['norm'] == 'L1 norm':
+								fun_norm = lambda x: np.linalg.norm(x.reshape(-1), ord=1)
+							elif params['norm'] == 'Greatest singular value':
+								fun_norm = lambda x: np.linalg.svd(x, compute_uv=False) [0]
+							else:
+								print('Norm calculator not implemented!')
+
+							# Calculate threshold
+							if not params['percentage']:
+								threshold = float(params['threshold'])
+							else:
+								norms = []
+								for channel in range(tensor_np.shape[0]):
+									for in_filter in range(tensor_np.shape[1]):
+										norms.append(fun_norm(tensor_np[channel][in_filter]))
+								threshold = np.percentile(norms, float(params['threshold']))
+								print(threshold, norms)
+
+							# Create pruning mask
+							mask = torch.zeros_like(child.weight)
+							for channel in range(tensor_np.shape[0]):
+								for in_filter in range(tensor_np.shape[1]):
+
+									norm = fun_norm(tensor_np[channel][in_filter])
+									if norm > threshold:
+										mask[channel, in_filter,:,:] = 1
+
+							# Apply pruning
+							prune.custom_from_mask(child, 'weight', mask)
+							prune.remove(child, "weight")
+
 
 				# Send model to tester/visualizer
 				self.outer.signal_model_ready.emit(self.model)
