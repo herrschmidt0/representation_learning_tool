@@ -6,6 +6,7 @@ from graphviz import Graph
 import numpy as np
 from sklearn.metrics import classification_report
 import networkx as nx
+from networkx.drawing.nx_agraph import graphviz_layout
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -333,7 +334,7 @@ class Visualizer(QTabWidget):
 			layout = QVBoxLayout()
 			self.setLayout(layout)
 
-			self.canvas_graph = MplCanvas()
+			self.canvas_graph = MplCanvas(width=5, height=10)
 			
 			self.label_longestpath = QLabel()
 
@@ -350,16 +351,16 @@ class Visualizer(QTabWidget):
 					weight_matrix = (layer.weight.cpu()).detach().numpy()
 					# Add input channels
 					if i == 0:
-						for in_channel in range(layer.weight.shape[1]):
+						for in_channel in range(weight_matrix.shape[1]):
 							G.add_node("l{}_n{}".format(i, in_channel))
 
 					# Add channels
-					for out_channel in range(layer.weight.shape[0]):
+					for out_channel in range(weight_matrix.shape[0]):
 						G.add_node("l{}_n{}".format(i+1, out_channel))
 
 					# Add edges
-					for in_channel in range(layer.weight.shape[1]):
-						for out_channel in range(layer.weight.shape[0]):
+					for in_channel in range(weight_matrix.shape[1]):
+						for out_channel in range(weight_matrix.shape[0]):
 							in_node = "l{}_n{}".format(i, in_channel)
 							out_node = "l{}_n{}".format(i+1, out_channel)
 							edge_weight = np.linalg.norm(weight_matrix[out_channel][in_channel].reshape(-1), ord=1)
@@ -379,5 +380,6 @@ class Visualizer(QTabWidget):
 
 			# https://gist.github.com/craffel/2d727968c3aaebd10359
 			# https://stackoverflow.com/questions/58511546/in-python-is-there-a-way-to-use-networkx-to-display-a-neural-network-in-the-sta
-			nx.draw(G, ax=self.canvas_graph.axes)
+			pos = graphviz_layout(G, prog='dot', args="-Grankdir=LR")
+			nx.draw(G, with_labels=True, pos=pos, ax=self.canvas_graph.axes)
 			self.canvas_graph.draw_idle()
