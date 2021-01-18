@@ -3,6 +3,7 @@ import sys
 import os
 import traceback
 import copy
+import parse
 import numpy as np
 import networkx as nx
 
@@ -20,6 +21,7 @@ from torch.nn.utils import prune
 
 import config
 from torch_pruning import ThresholdPruning
+from utils import ChannelGraph
 
 
 class ModelTransformer(QTabWidget):
@@ -62,6 +64,12 @@ class ModelTransformer(QTabWidget):
 	class PruningTab(QWidget):
 
 			method = None
+			methods = [
+				'Magnitude pruning', 
+				'Node-wise pruning', 
+				'Filter-pruning',
+				'Graph pruning'
+			]
 
 			def __init__(self, outer):
 				super().__init__()
@@ -72,14 +80,13 @@ class ModelTransformer(QTabWidget):
 
 
 				def pruning_changed(i):
-					print(i)
 					self.method = i
 					self.controls.setCurrentIndex(i)
 
 				label_pruningtype = QLabel('Pruning type')
 				self.dropwdown_pruningtype = QComboBox()
 				self.dropwdown_pruningtype.setMaximumWidth(250)
-				self.dropwdown_pruningtype.addItems(['Magnitude pruning', 'Node-wise pruning', 'Filter-pruning'])
+				self.dropwdown_pruningtype.addItems(self.methods)
 				self.dropwdown_pruningtype.currentIndexChanged.connect(pruning_changed)
 				self.dropwdown_pruningtype.setCurrentIndex(0)
 				self.method = 0
@@ -88,6 +95,7 @@ class ModelTransformer(QTabWidget):
 				self.controls.addWidget(self.MagnitudePruningControls())
 				self.controls.addWidget(self.NodeWisePruningControls())
 				self.controls.addWidget(self.FilterNormPruning())
+				self.controls.addWidget(self.GraphPruningControls())
 
 				self.button_execute = QPushButton('Prune model!')
 				self.button_execute.setMaximumWidth(180)
@@ -208,6 +216,34 @@ class ModelTransformer(QTabWidget):
 						'norm': self.combo_measure.currentText()
 					}
 
+			class GraphPruningControls(QWidget):
+				def __init__(self):
+					super().__init__()
+
+					layout = QVBoxLayout()
+					self.setLayout(layout)
+
+					layout.addWidget(QLabel('Filter pruning of Conv2D layers: keep n paths (from diff input channels to different output channels) with highest sum of weights. \n When percentage is checked: prune smallest paths until overall non-zero percentage drops to specified value.'))
+	
+					self.checkbox_percentage = QCheckBox('Percentage')
+					self.checkbox_percentage.setChecked(True)
+
+					label_value = QLabel('Percentage / Nr of paths:')
+					self.edit_value = QLineEdit()
+					self.edit_value.setMaximumWidth(150)		
+
+					layout.addWidget(label_value)
+					layout.addWidget(self.checkbox_percentage)
+					layout.addWidget(self.edit_value)
+
+				def getValues(self):
+					return {
+						'percentage': self.checkbox_percentage.isChecked(),
+						'value': self.edit_value.text()
+					}						
+
+########################################################################
+
 			def prune_model(self, params):
 
 				# Apply pruning
@@ -297,6 +333,96 @@ class ModelTransformer(QTabWidget):
 							prune.custom_from_mask(child, 'weight', mask)
 							prune.remove(child, "weight")
 
+				elif self.method == 3:
+
+					def paths_to_filters(path):
+						# Extract filters that lie on these paths
+						path_filters = {}
+						for path in paths:
+							for i in range(len(path['path'])-1):
+								node1 = parse.parse("l{}_n{}", path['path'][i])
+								node2 = parse.parse("l{}_n{}", path['path'][i+1])
+							
+								l1, n1 = map(int, node1)
+								l2, n2 = map(int, node2)
+
+								if l2 in path_filters:
+									path_filters[l2].append((n2, n1))
+								else:
+									path_filters[l2] = [(n2, n1)]
+						return path_filters
+
+					def create_mask(weight, filters, layer_id):
+						mask = torch.zeros_like(weight)
+						for filt in filters[layer_id]:
+							mask[filt[0], filt[1], :, :] = 1
+						return mask			
+
+					# Construct channel graph
+					G = ChannelGraph(self.model)
+
+					if params['percentage']:
+						
+						perc = 100
+						while perc > int(params['value']):
+							
+							# Find smallest path
+							paths = G.getSmallestNPaths(1)
+							print(paths)
+
+							# Prune smallest path
+							path_filters = paths_to_filters(paths)
+							#print(path_filters)
+							layer_id = 1
+							for child in self.model.children():
+								if isinstance(child, torch.nn.Conv2d):
+
+									# Create mask
+									mask = torch.ones_like(child.weight)
+									for filt in path_filters[layer_id]:
+										mask[filt[0], filt[1], :, :] = 0
+									
+									# Apply pruning
+									prune.custom_from_mask(child, 'weight', mask)
+									prune.remove(child, "weight")
+
+									layer_id += 1
+
+							# Remove from channel graph
+							G.excludePath(paths[0]['path'])
+
+							# Recalculate percentage
+							nr_non_zero = 0
+							nr_overall = 0
+							for child in self.model.children():
+								if isinstance(child, torch.nn.Conv2d):
+									tensor_np = (child.weight.cpu()).detach().numpy()
+
+									nr_non_zero += np.count_nonzero(tensor_np)
+									nr_overall += tensor_np.size
+
+							perc = nr_non_zero/nr_overall * 100
+							print(perc, '\n')
+
+					else:
+						# Extract first n heaviest paths
+						paths = G.getHeaviestNPaths(int(params['value']))
+
+						path_filters = paths_to_filters(paths)
+
+						# Prune all paths outside the kept ones
+						layer_id = 1
+						for child in self.model.children():
+							if isinstance(child, torch.nn.Conv2d):
+
+								# Create mask
+								mask = create_mask(child.weight, path_filters, layer_id)
+
+								# Apply pruning
+								prune.custom_from_mask(child, 'weight', mask)
+								prune.remove(child, "weight")
+
+								layer_id += 1
 
 				# Send model to tester/visualizer
 				self.outer.signal_model_ready.emit(self.model)
@@ -304,7 +430,6 @@ class ModelTransformer(QTabWidget):
 			def update(self, model):
 				self.model = model
 				self.button_execute.setVisible(True)
-
 
 
 

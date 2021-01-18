@@ -7,6 +7,8 @@ import numpy as np
 from sklearn.metrics import classification_report
 import networkx as nx
 from networkx.drawing.nx_agraph import graphviz_layout
+#import matplotlib.pyplot as plt
+#plt.ion()
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -23,7 +25,7 @@ from torchviz import make_dot, resize_graph
 from framelayout import FrameLayout
 from torch_pruning import ThresholdPruning
 import config
-from utils import MplCanvas, StackedWidgetWithComboBox
+from utils import MplCanvas, StackedWidgetWithComboBox, ChannelGraph, draw_neural_net
 
 
 class Visualizer(QTabWidget):
@@ -334,52 +336,56 @@ class Visualizer(QTabWidget):
 			layout = QVBoxLayout()
 			self.setLayout(layout)
 
-			self.canvas_graph = MplCanvas(width=5, height=10)
+			self.canvas_graph = MplCanvas(width=5, height=15)
 			
-			self.label_longestpath = QLabel()
+			self.label_longestpaths = QLabel()
 
 			layout.addWidget(self.canvas_graph)
-			layout.addWidget(self.label_longestpath)
+			layout.addWidget(self.label_longestpaths)
 
 		def update(self, model):
 
 			# Construct graph
-			G = nx.Graph()
-			for i, layer in enumerate(model.children()):
-				if isinstance(layer, torch.nn.Conv2d):
+			G = ChannelGraph(model)
 
-					weight_matrix = (layer.weight.cpu()).detach().numpy()
-					# Add input channels
-					if i == 0:
-						for in_channel in range(weight_matrix.shape[1]):
-							G.add_node("l{}_n{}".format(i, in_channel))
-
-					# Add channels
-					for out_channel in range(weight_matrix.shape[0]):
-						G.add_node("l{}_n{}".format(i+1, out_channel))
-
-					# Add edges
-					for in_channel in range(weight_matrix.shape[1]):
-						for out_channel in range(weight_matrix.shape[0]):
-							in_node = "l{}_n{}".format(i, in_channel)
-							out_node = "l{}_n{}".format(i+1, out_channel)
-							edge_weight = np.linalg.norm(weight_matrix[out_channel][in_channel].reshape(-1), ord=1)
-							G.add_edge(in_node, out_node, weight=edge_weight)
-
-			# Heaviest path
+			# Heaviest paths
+			last_conv_layer, last_conv_layer_id = G.getLastConvLayer()
+			text_longestpaths = ''
 			source = "l0_n0"
-			dest = "l2_n0"
-			#paths = [path for path in nx.all_simple_paths(G, source, dest)]
-			#heaviest_path = max(paths, key=lambda path: get_weight(path))
-			# !!!! networkx.algorithms.shortest_paths.weighted.dijkstra_path
+			for channel in range(last_conv_layer.weight.shape[0]):
+				
+				dest = "l{}_n{}".format(last_conv_layer_id, channel)
+				#shortest_path = nx.dijkstra_path(G, source, dest)
+				#print('Shortest path:', shortest_path)
 
+				# Try Dijkstra (fail if there is no path to dest)
+				try:
+					heaviest_path = nx.dijkstra_path(G, source, dest, weight=lambda s,e,d: 1/d['weight'])
+					path_dist = np.sum([G[heaviest_path[i]][heaviest_path[i+1]]['weight'] for i in range(len(heaviest_path)-1) ])
+					text_longestpaths += 'Longest path from "{}" to "{}" is:  {:.2f} ({})\n'.format(source, dest, path_dist, heaviest_path)
+				except:
+					pass
+					#print('No path.')
 
-			#self.label_longestpath.setText(str(heaviest_path))
+			self.label_longestpaths.setText(text_longestpaths)
 
-			# Draw graph . reeeeeeeeeee
-
+			# Draw graph
 			# https://gist.github.com/craffel/2d727968c3aaebd10359
 			# https://stackoverflow.com/questions/58511546/in-python-is-there-a-way-to-use-networkx-to-display-a-neural-network-in-the-sta
+			'''
+			self.canvas_graph.update()
 			pos = graphviz_layout(G, prog='dot', args="-Grankdir=LR")
-			nx.draw(G, with_labels=True, pos=pos, ax=self.canvas_graph.axes)
+			nx.draw(G, with_labels=True, node_size=900, pos=pos, ax=self.canvas_graph.axes)
+			'''
+			ax = self.canvas_graph.figure.add_subplot(111)
+			ax.clear()
+			#ax = self.canvas_graph.axes
+			#ax.clear()
+			#ax.set_axis_off()
+
+			draw_neural_net(ax, 0.1, 0.9, 0.1, 0.9, G.getLayerSizes(), G)
 			self.canvas_graph.draw_idle()
+			#self.canvas_graph.axes.draw()
+			#self.canvas_graph.show()
+			#self.canvas_graph.draw()
+			
