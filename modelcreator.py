@@ -1,8 +1,11 @@
 import json
 import sys
+sys.path.append('trainers')
+sys.path.append('dataset_loaders')
 import os
 import traceback
 import importlib
+import importlib.util
 
 from PyQt5.QtCore import Qt, QObject, QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -12,8 +15,7 @@ import torch
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 import config
-import network_def
-import train
+
 
 class ModelCreator(QTabWidget):
 
@@ -30,6 +32,9 @@ class ModelCreator(QTabWidget):
 
 		self.currentChanged.connect(self.updateSizes)
 
+	def __del__(self):
+		os.remove('network_def.py')		
+
 	def updateSizes(self):
 	    for i in range(self.count()):
 	        self.widget(i).setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
@@ -43,10 +48,10 @@ class ModelCreator(QTabWidget):
 		if 'network-def' in config.config[dataset]:
 			model_path = config.config[dataset]['network-def']	
 			with open(model_path, 'r') as f:
-				network_def = f.read()
+				code_network_def = f.read()
 
-			self.editor.textedit_network.setText(network_def)
-			self.importer.textedit_network.setText(network_def)
+			self.editor.textedit_network.setText(code_network_def)
+			self.importer.textedit_network.setText(code_network_def)
 
 		if 'train' in config.config[dataset]:
 			trainer_path = config.config[dataset]['train'] 
@@ -114,6 +119,7 @@ class ModelCreator(QTabWidget):
 
 			code_definition = self.textedit_network.toPlainText()
 			code = imports + '\nglobal Model\n' + code_definition
+			print('writing code to network_def', len(code))
 			with open('network_def.py', 'w') as f:
 				f.write(code)
 
@@ -162,15 +168,27 @@ class ModelCreator(QTabWidget):
 				num_epochs = 5
 				batch_size = 64
 				learning_rate = 0.001
+				import network_def
+				import train
 
-				train_dataset = config.config[self.dataset]["datasets"][0]
-				train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
-						                                   batch_size=batch_size, 
-						                                   shuffle=True)
+				# Check if dataset is built-in or custom created from script
+				if isinstance(config.config[self.dataset]['datasets'], list):
+					train_dataset = config.config[self.dataset]["datasets"][0]
+					train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
+							                                   batch_size=batch_size, 
+							                                   shuffle=True)
+				elif isinstance(config.config[self.dataset]['datasets'], str):
+					loader_path = config.config[self.dataset]['datasets']
+					
+					spec = importlib.util.spec_from_file_location("module.name", loader_path)
+					foo = importlib.util.module_from_spec(spec)
+					spec.loader.exec_module(foo)
+					train_loader, test_loader = foo.load()
 
 				model = network_def.Model()
 				model = model.to(device)
 
+				print('starting trainer')
 				model = train.train(train_loader, config.config[self.dataset]['transform'], model, num_epochs, learning_rate, device)
 
 				self.finished_with_model.emit(model)

@@ -1,7 +1,0 @@
-{
-	"mnist-1d": {
-		"network-def": "network_definitions/mnist_dnn_pytorch.py",
-		"train": "trainers/mnist_dnn_train_pytorch.py",
-		"weights": "exported_models/dnn_mnist.pt"
-	}
-}

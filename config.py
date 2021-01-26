@@ -1,5 +1,7 @@
+import numpy as np
 import torchvision
 import torchvision.transforms as transforms
+from torch.utils.data import TensorDataset, DataLoader
 
 config = {
 	"mnist-1d": {
@@ -33,5 +35,11 @@ config = {
 		"network-def": "network_definitions/mnist_cnn_pytorch.py",
 		"train": "trainers/mnist_dnn_train_pytorch.py",
 		"weights": "exported_models/cnn_mnist.pt"
+	},
+	"ct-medical-images": {
+		"datasets": 'dataset_loaders/ctimage_loader.py',
+		"transform": lambda x: x, 
+		"network-def": "network_definitions/ctimage_lenet.py",
+		"train": "trainers/ctimage_train.py"
 	}
 }

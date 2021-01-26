@@ -2,13 +2,13 @@ import json
 import sys
 import os
 import traceback
+import importlib.util
 from graphviz import Graph
 import numpy as np
 from sklearn.metrics import classification_report
 import networkx as nx
 from networkx.drawing.nx_agraph import graphviz_layout
 #import matplotlib.pyplot as plt
-#plt.ion()
 
 from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
@@ -62,6 +62,8 @@ class Visualizer(QTabWidget):
 		self.tab_testresults.update(dataset, model)
 		self.tab_comp_graph.update(model)
 		self.tab_channel_graph.update(model)
+
+######### OVERVIEW TAB #####################################################
 
 	class OverviewTab(QWidget):
 		def __init__(self):
@@ -239,6 +241,8 @@ class Visualizer(QTabWidget):
 						cell.setFlags(Qt.ItemIsEnabled)
 						self.setItem(i, j, cell)	
 
+######### TEST RESULT TAB ###############################################
+
 	class TestResultsTab(QWidget):
 		batch_size = 32
 
@@ -253,15 +257,25 @@ class Visualizer(QTabWidget):
 
 		def update(self, dataset, model):
 
-			# Define dataset loader
+			# Get dataset loader
 			if isinstance(dataset, str):
 				dataset = dataset.lower()
 				if dataset in config.config:
-					test_dataset = config.config[dataset]["datasets"][1]
-				
-					test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
-					                                          batch_size=self.batch_size, 
-					                                          shuffle=True)
+
+					# Check if dataset is built-in or custom created from script
+					if isinstance(config.config[dataset]['datasets'], list):
+						test_dataset = config.config[dataset]["datasets"][1]
+						test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
+								                                   batch_size=self.batch_size, 
+								                                   shuffle=True)
+					elif isinstance(config.config[dataset]['datasets'], str):
+						loader_path = config.config[dataset]['datasets']
+						
+						spec = importlib.util.spec_from_file_location("module.name", loader_path)
+						foo = importlib.util.module_from_spec(spec)
+						spec.loader.exec_module(foo)
+						train_loader, test_loader = foo.load()
+
 					transform = config.config[dataset]["transform"]
 
 			# Test model on dataset
@@ -290,6 +304,8 @@ class Visualizer(QTabWidget):
 			report = classification_report(y_true, y_pred)
 			self.label_results.setText(report)
 			print('Test results updated.')
+
+######## COMP GRAPH TAB ##########################################
 
 	class ComputationGraphTab(QWidget):
 		def __init__(self):
@@ -328,6 +344,7 @@ class Visualizer(QTabWidget):
 
 			print('Computation graph updated.')
 
+####### CHANNEL GRAPH TAB ##########################
 
 	class ChannelGraphTab(QWidget):
 		def __init__(self):

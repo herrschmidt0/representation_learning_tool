@@ -6,6 +6,8 @@ from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 
+import config
+
 class DatasetLoader(QTabWidget):
 
 	signal_dataset_ready = pyqtSignal(object)
@@ -60,7 +62,7 @@ class DatasetLoader(QTabWidget):
 			self.dropwdown_dataset = QComboBox()
 			self.dropwdown_dataset.setMaximumWidth(180)
 			self.dropwdown_dataset.addItem('Select dataset...')
-			self.dropwdown_dataset.addItem('MNIST-1D')
-			self.dropwdown_dataset.addItem('MNIST-2D')
+			for key in config.config.keys():
+				self.dropwdown_dataset.addItem(key)
 
 			layout.addWidget(self.dropwdown_dataset)

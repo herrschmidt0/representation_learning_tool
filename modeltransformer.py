@@ -228,17 +228,22 @@ class ModelTransformer(QTabWidget):
 					self.checkbox_percentage = QCheckBox('Percentage')
 					self.checkbox_percentage.setChecked(True)
 
-					label_value = QLabel('Percentage / Nr of paths:')
+					self.checkbox_separate_perc = QCheckBox('Separate percentages for each layer')
+					self.checkbox_separate_perc.setChecked(False)
+
+					label_value = QLabel('Percentage(s) [comma separated] / Nr of paths:')
 					self.edit_value = QLineEdit()
-					self.edit_value.setMaximumWidth(150)		
+					self.edit_value.setMaximumWidth(200)		
 
 					layout.addWidget(label_value)
 					layout.addWidget(self.checkbox_percentage)
+					layout.addWidget(self.checkbox_separate_perc)
 					layout.addWidget(self.edit_value)
 
 				def getValues(self):
 					return {
 						'percentage': self.checkbox_percentage.isChecked(),
+						'sep_perc': self.checkbox_separate_perc.isChecked(),
 						'value': self.edit_value.text()
 					}						
 
@@ -361,7 +366,7 @@ class ModelTransformer(QTabWidget):
 					# Construct channel graph
 					G = ChannelGraph(self.model)
 
-					if params['percentage']:
+					if params['percentage'] and not params['sep_perc']:
 						
 						perc = 100
 						while perc > int(params['value']):
@@ -403,6 +408,74 @@ class ModelTransformer(QTabWidget):
 
 							perc = nr_non_zero/nr_overall * 100
 							print(perc, '\n')
+
+					elif params['percentage'] and params['sep_perc']:
+
+						percents = list(map(int, params['value'].split(',')))
+						target_reached = False
+						while not target_reached:
+							
+							# Find smallest path
+							paths = G.getSmallestNPaths(1)
+							if len(paths) == 0:
+								break
+							
+							# Remove from channel graph
+							G.excludePath(paths[0]['path'])
+
+							# Check if all layers allow to prune this path
+							path_filters = paths_to_filters(paths)
+							pruning_allowed = True
+							layer_id = 1
+							with torch.no_grad():
+								for child in self.model.children():
+									if isinstance(child, torch.nn.Conv2d):
+
+										# Create mask
+										mask = torch.ones_like(child.weight)
+										for filt in path_filters[layer_id]:
+											mask[filt[0], filt[1], :, :] = 0
+
+										# Weights to binary matrix
+										weight_bin = torch.abs(torch.sign(child.weight)).int()
+
+										# Bitwise - And
+										res_bin = torch.logical_and(mask, weight_bin)
+
+										# Check if layer allows pruning
+										allowed = bool((torch.count_nonzero(res_bin)/torch.numel(res_bin) * 100) > percents[layer_id-1])
+										pruning_allowed = pruning_allowed & allowed
+
+										layer_id += 1 
+
+							# Prune, if allowed
+							if pruning_allowed:			
+								
+								#print(path_filters)
+								layer_id = 1
+								for child in self.model.children():
+									if isinstance(child, torch.nn.Conv2d):
+
+										# Create mask
+										mask = torch.ones_like(child.weight)
+										for filt in path_filters[layer_id]:
+											mask[filt[0], filt[1], :, :] = 0
+
+										# Apply pruning
+										prune.custom_from_mask(child, 'weight', mask)
+										prune.remove(child, "weight")
+
+										layer_id += 1
+
+							# Check if all layers have reached the target percentage
+							target_reached = True
+							layer_id = 1
+							with torch.no_grad():
+								for child in self.model.children():
+									if isinstance(child, torch.nn.Conv2d):
+										target_reached &= bool(torch.count_nonzero(child.weight)/torch.numel(child.weight) * 100 <= percents[layer_id-1])
+
+								print([float(torch.count_nonzero(child.weight)/torch.numel(child.weight)*100) for child in self.model.children() if isinstance(child, torch.nn.Conv2d)])
 
 					else:
 						# Extract first n heaviest paths
