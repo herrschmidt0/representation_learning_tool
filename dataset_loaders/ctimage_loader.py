@@ -36,30 +36,38 @@ def load():
 
 	images = []
 	labels = []
-	shapes = set()
 	for fname in os.listdir(im_path):
-		#fname = fname_path.split('/')[-1]
-		# Image
+		# Image, resize to half
 		image = imread(os.path.join(os.path.abspath(im_path), fname))
-		image = np.expand_dims(image, axis=0).astype('float32') 
-		shapes.add(image.shape)
+		image = np.expand_dims(image, axis=0).astype('float32')
+		image = image[:, ::2, ::2]
+		image = image / np.max(image)
 		images.append(image)
+		#print(image[:, ::8, ::8])
+
 		# Label
 		_, _, contrast = parse.parse('ID_{}_AGE_{}_CONTRAST_{}_CT.tif', fname)
 		labels.append(int(contrast))
 
-	# Convert to Pytorch tensors, then dataset
+	# Convert to Pytorch tensors
 	tensor_x = torch.tensor(images)
 	tensor_y = torch.tensor(labels)
 	
+	# Normalize
+	#tensor_x = tensor_x / torch.max(tensor_x)
+	#print(tensor_x[:5])
+
+
+	# Dataset
 	full_dataset = TensorDataset(tensor_x, tensor_y)
 
 	# Split to train-test sets
-	len_train = int(0.2*len(tensor_x))
+	len_train = int(0.1*len(tensor_x))
 	len_test = len(tensor_x) - len_train
-	train_dataset, test_dataset = random_split(full_dataset, [len_train, len_test], generator=torch.Generator().manual_seed(42))
+	train_dataset, test_dataset = random_split(full_dataset, [len_train, len_test])
 
-	train_dataloader = DataLoader(train_dataset)
-	test_dataloader = DataLoader(test_dataset)
+	# Create dataloaders
+	train_dataloader = DataLoader(train_dataset, shuffle=True)
+	test_dataloader = DataLoader(test_dataset, shuffle=True)
 
 	return [train_dataloader, test_dataloader]

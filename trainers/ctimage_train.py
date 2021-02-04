@@ -1,4 +1,8 @@
-def train(train_loader, transform, model, num_epochs, learning_rate, device):
+def train(train_loader, transform, model, device):
+
+    num_epochs = 60
+    batch_size = 32
+    learning_rate = 0.01
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -7,9 +11,9 @@ def train(train_loader, transform, model, num_epochs, learning_rate, device):
     # Train the model
     total_step = len(train_loader)
     for epoch in range(num_epochs):
+        print('Epoch nr {}'.format(epoch))
         for i, (images, labels) in enumerate(train_loader):  
             # Move tensors to the configured device
-            #images = images.reshape(-1, 28*28).to(device)
             images = transform(images)
             images = images.to(device)
             labels = labels.to(device)
@@ -23,7 +27,7 @@ def train(train_loader, transform, model, num_epochs, learning_rate, device):
             loss.backward()
             optimizer.step()
             
-            if (i+1) % 100 == 0:
+            if (i+1) % 10 == 0:
                 print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}' 
                        .format(epoch+1, num_epochs, i+1, total_step, loss.item()))
 

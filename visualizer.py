@@ -15,7 +15,6 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 
 import torch
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
 import torch.nn as nn
 from torch.autograd import Variable
 import torchvision
@@ -25,7 +24,7 @@ from torchviz import make_dot, resize_graph
 from framelayout import FrameLayout
 from torch_pruning import ThresholdPruning
 import config
-from utils import MplCanvas, StackedWidgetWithComboBox, ChannelGraph, draw_neural_net
+from utils import MplCanvas, StackedWidgetWithComboBox, ChannelGraph, draw_neural_net, get_testloader
 
 
 class Visualizer(QTabWidget):
@@ -53,14 +52,14 @@ class Visualizer(QTabWidget):
 	    current.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
 	#@pyqtSlot(object, object)
-	def receive_dataset_model(self, dataset, model):
+	def receive_dataset_model(self, dataset, model, params=dict()):
 		self.model = model
 		self.dataset = dataset
 		print('Visualizer received the model (& dataset).')
 
 		self.tab_overview.update(model)
-		self.tab_testresults.update(dataset, model)
-		self.tab_comp_graph.update(model)
+		self.tab_testresults.update(dataset, model, params)
+		self.tab_comp_graph.update(dataset, model, params)
 		self.tab_channel_graph.update(model)
 
 ######### OVERVIEW TAB #####################################################
@@ -80,6 +79,11 @@ class Visualizer(QTabWidget):
 			for i in reversed(range(self.layout.count())): 
 				self.layout.itemAt(i).widget().setParent(None)
 
+			# Summary data
+			self.label_totalparam = QLabel()
+			total_nr_params = 0
+			self.layout.addWidget(self.label_totalparam)
+
 			# Insert new layer information
 			self.layout.addWidget(QLabel('Layers:'))
 
@@ -93,8 +97,16 @@ class Visualizer(QTabWidget):
 					layer_type = 'ReLU activation'
 				elif isinstance(child, torch.nn.Dropout2d):
 					layer_type = '2D Dropout'
+				elif isinstance(child, torch.nn.Flatten):
+					layer_type = 'Flattening'
+				elif 'DeQuantStub' in str(child):
+					layer_type = 'DeQuantStub'
+				elif 'QuantStub' in str(child):
+					layer_type = 'QuantStub'
+				elif 'QuantizedLinear' in str(child):
+					layer_type = 'QuantizedLinear'
 				else:
-					layer_type = 'Unknown'
+					layer_type = str(child)
 
 				name = layer_type + ' layer'
 				container = FrameLayout(title=name)
@@ -105,6 +117,7 @@ class Visualizer(QTabWidget):
 					# Parameter name, shape
 					container.addWidget(QLabel('Parameter name: {0}'.format(name)))
 					container.addWidget(QLabel('Parameter shape: {0}'.format(parameter.shape,)))
+					total_nr_params += torch.numel(parameter)
 
 					# Statistical data about the weight matrices/vectors
 					param_np = (parameter.cpu()).detach().numpy()
@@ -128,7 +141,6 @@ class Visualizer(QTabWidget):
 
 					elif isinstance(child, torch.nn.Conv2d):
 						if name == 'weight':
-							print(param_np.shape)
 
 							table_norms = self.FilterNormsTable(param_np)
 							stacked_combo.addItem(table_norms, 'L1 norms of filters')
@@ -140,26 +152,11 @@ class Visualizer(QTabWidget):
 							weights_dist = self.WeightDistribution(param_np)
 							stacked_combo.addItem(weights_dist, 'Distribution of weights')
 
-							'''
-							container.addWidget(QLabel('Browse filters:'))
-							combobox_filters = QComboBox()
-							combobox_filters.addItems([('Filter '+str(i)) for i in range(parameter.shape[0])])
-							container.addWidget(combobox_filters)
-							label_weights = QLabel()
-							container.addWidget(label_weights)
-
-							def filter_selected(i):
-								print(parameter.shape)
-								iiid_filter = parameter.narrow(1, 0, parameter.shape[1])
-								iiid_filter_print = Variable(iiid_filter).data[0]
-								label_weights.setText(iiid_filter_print)
-							combobox_filters.currentIndexChanged.connect(filter_selected)
-							'''
 
 					container.addWidget(QLabel(' '))
 				self.layout.addWidget(container)
 
-
+			self.label_totalparam.setText('Total number of parameters: {}'.format(total_nr_params))			
 			print('Model overview updated.')
 
 	
@@ -241,7 +238,7 @@ class Visualizer(QTabWidget):
 						cell.setFlags(Qt.ItemIsEnabled)
 						self.setItem(i, j, cell)	
 
-######### TEST RESULT TAB ###############################################
+######### TEST RESULT TAB ####################################################################################################3
 
 	class TestResultsTab(QWidget):
 		batch_size = 32
@@ -255,28 +252,22 @@ class Visualizer(QTabWidget):
 			self.label_results = QLabel()
 			layout.addWidget(self.label_results)
 
-		def update(self, dataset, model):
+		def update(self, dataset, model, params):
+
+			# CPU or GPU
+			if torch.cuda.is_available() and \
+				('quantized_cpu' not in params or ('quantized_cpu' in params and not params['quantized_cpu'])):
+				device = 'cuda'
+			else:
+				device = 'cpu'
+			print('Device:', device)
 
 			# Get dataset loader
 			if isinstance(dataset, str):
 				dataset = dataset.lower()
 				if dataset in config.config:
-
-					# Check if dataset is built-in or custom created from script
-					if isinstance(config.config[dataset]['datasets'], list):
-						test_dataset = config.config[dataset]["datasets"][1]
-						test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
-								                                   batch_size=self.batch_size, 
-								                                   shuffle=True)
-					elif isinstance(config.config[dataset]['datasets'], str):
-						loader_path = config.config[dataset]['datasets']
-						
-						spec = importlib.util.spec_from_file_location("module.name", loader_path)
-						foo = importlib.util.module_from_spec(spec)
-						spec.loader.exec_module(foo)
-						train_loader, test_loader = foo.load()
-
-					transform = config.config[dataset]["transform"]
+					test_loader = get_testloader(dataset, self.batch_size)
+					#transform = config.config[dataset]["transform"]
 
 			# Test model on dataset
 			model.eval()
@@ -286,7 +277,6 @@ class Visualizer(QTabWidget):
 				correct = 0
 				total = 0
 				for images, labels in test_loader:
-					images = transform(images)
 					images = images.to(device)
 					labels = labels.to(device)
 
@@ -317,24 +307,40 @@ class Visualizer(QTabWidget):
 			self.widget_canvas = QLabel()			
 			layout.addWidget(self.widget_canvas)
 
-		def update(self, model):
+		def update(self, dataset, model, params):
+
+			# CPU or GPU
+			if torch.cuda.is_available() and \
+				('quantized_cpu' not in params or ('quantized_cpu' in params and not params['quantized_cpu'])):
+				device = 'cuda'
+			else:
+				device = 'cpu'
+
+			# Get input shape
+			test_loader = get_testloader(dataset, 4)
+			for test_images, _ in test_loader:  
+				sample = test_images[0]
+
+			x = torch.randn(16, *sample.shape).to(device)
 
 			# Find input size
-			layer1 = next(model.children())
+			'''
+			for layer in model.children():
+				print(layer)
+				if isinstance(layer, nn.Linear) or isinstance(layer, nn.QuantizedLinear):		
+					in_features = layer.weight.shape[1]				
+					x = torch.randn(16, in_features).to(device)
+					break
+				elif isinstance(layer, nn.Conv2d):
 
-			if isinstance(layer1, nn.Linear):
-				for name, param in layer1.named_parameters():
-					if name == 'weight':
-						in_features = param.shape[1]
-						break
-				x = torch.randn(16, in_features).to(device)
-			elif isinstance(layer1, nn.Conv2d):
-				for name, param in layer1.named_parameters():
-					if name == 'weight':
-						in_channels = param.shape[1]
-						break
-				x = torch.randn(16, in_channels, 50, 50).to(device)
+					# Check if dataset is built-in or custom created from script
+					test_loader = get_testloader(dataset, 4)
+					for test_images, _ in test_loader:  
+						sample = test_images[0]
 
+					x = torch.randn(16, sample.shape[0], sample.shape[1], sample.shape[2]).to(device)
+					break
+			'''
 			y = model(x)
 			graph = make_dot(y, params=dict(model.named_parameters()))
 
@@ -350,59 +356,64 @@ class Visualizer(QTabWidget):
 		def __init__(self):
 			super().__init__()
 
-			layout = QVBoxLayout()
-			self.setLayout(layout)
+			self.layout = QVBoxLayout()
+			self.setLayout(self.layout)
 
 			self.canvas_graph = MplCanvas(width=5, height=15)
 			
 			self.label_longestpaths = QLabel()
 
-			layout.addWidget(self.canvas_graph)
-			layout.addWidget(self.label_longestpaths)
+			self.layout.addWidget(self.canvas_graph)
+			self.layout.addWidget(self.label_longestpaths)
 
 		def update(self, model):
 
-			# Construct graph
-			G = ChannelGraph(model)
+			has_conv_layers = np.any([isinstance(layer, torch.nn.Conv2d) for layer in model.children()])
 
-			# Heaviest paths
-			last_conv_layer, last_conv_layer_id = G.getLastConvLayer()
-			text_longestpaths = ''
-			source = "l0_n0"
-			for channel in range(last_conv_layer.weight.shape[0]):
+			if has_conv_layers:
+				# Construct graph
+				G = ChannelGraph(model)
+
+				# Heaviest paths
+				last_conv_layer, last_conv_layer_id = G.getLastConvLayer()
+				text_longestpaths = ''
+				source = "l0_n0"
+				for channel in range(last_conv_layer.weight.shape[0]):
+					
+					dest = "l{}_n{}".format(last_conv_layer_id, channel)
+					#shortest_path = nx.dijkstra_path(G, source, dest)
+					#print('Shortest path:', shortest_path)
+
+					# Try Dijkstra (fail if there is no path to dest)
+					try:
+						heaviest_path = nx.dijkstra_path(G, source, dest, weight=lambda s,e,d: 1/d['weight'])
+						path_dist = np.sum([G[heaviest_path[i]][heaviest_path[i+1]]['weight'] for i in range(len(heaviest_path)-1) ])
+						text_longestpaths += 'Longest path from "{}" to "{}" is:  {:.2f} ({})\n'.format(source, dest, path_dist, heaviest_path)
+					except:
+						pass
+						#print('No path.')
+
+				self.label_longestpaths.setText(text_longestpaths)
+
+				# Draw graph
+				# https://gist.github.com/craffel/2d727968c3aaebd10359
+				# https://stackoverflow.com/questions/58511546/in-python-is-there-a-way-to-use-networkx-to-display-a-neural-network-in-the-sta
+				'''
+				self.canvas_graph.update()
+				pos = graphviz_layout(G, prog='dot', args="-Grankdir=LR")
+				nx.draw(G, with_labels=True, node_size=900, pos=pos, ax=self.canvas_graph.axes)
+				'''
+				ax = self.canvas_graph.figure.add_subplot(111)
+				ax.clear()
+				#ax = self.canvas_graph.axes
+				#ax.clear()
+				#ax.set_axis_off()
+
+				draw_neural_net(ax, 0.1, 0.9, 0.1, 0.9, G.getLayerSizes(), G)
+				self.canvas_graph.draw_idle()
+				#self.canvas_graph.axes.draw()
+				#self.canvas_graph.show()
+				#self.canvas_graph.draw()
+			else:
+				self.label_longestpaths.setText('No Conv layers in the model.')
 				
-				dest = "l{}_n{}".format(last_conv_layer_id, channel)
-				#shortest_path = nx.dijkstra_path(G, source, dest)
-				#print('Shortest path:', shortest_path)
-
-				# Try Dijkstra (fail if there is no path to dest)
-				try:
-					heaviest_path = nx.dijkstra_path(G, source, dest, weight=lambda s,e,d: 1/d['weight'])
-					path_dist = np.sum([G[heaviest_path[i]][heaviest_path[i+1]]['weight'] for i in range(len(heaviest_path)-1) ])
-					text_longestpaths += 'Longest path from "{}" to "{}" is:  {:.2f} ({})\n'.format(source, dest, path_dist, heaviest_path)
-				except:
-					pass
-					#print('No path.')
-
-			self.label_longestpaths.setText(text_longestpaths)
-
-			# Draw graph
-			# https://gist.github.com/craffel/2d727968c3aaebd10359
-			# https://stackoverflow.com/questions/58511546/in-python-is-there-a-way-to-use-networkx-to-display-a-neural-network-in-the-sta
-			'''
-			self.canvas_graph.update()
-			pos = graphviz_layout(G, prog='dot', args="-Grankdir=LR")
-			nx.draw(G, with_labels=True, node_size=900, pos=pos, ax=self.canvas_graph.axes)
-			'''
-			ax = self.canvas_graph.figure.add_subplot(111)
-			ax.clear()
-			#ax = self.canvas_graph.axes
-			#ax.clear()
-			#ax.set_axis_off()
-
-			draw_neural_net(ax, 0.1, 0.9, 0.1, 0.9, G.getLayerSizes(), G)
-			self.canvas_graph.draw_idle()
-			#self.canvas_graph.axes.draw()
-			#self.canvas_graph.show()
-			#self.canvas_graph.draw()
-			

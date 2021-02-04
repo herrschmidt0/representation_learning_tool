@@ -6,7 +6,10 @@ import torch.backends.cudnn as cudnn
 import torchvision
 import torchvision.transforms as transforms
 global Model
-def train(train_loader, transform, model, num_epochs, learning_rate, device):
+def train(train_loader, transform, model, device):
+
+    num_epochs = 30
+    learning_rate = 0.001 
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()

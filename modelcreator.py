@@ -15,7 +15,7 @@ import torch
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 import config
-
+from utils import get_trainloader
 
 class ModelCreator(QTabWidget):
 
@@ -113,6 +113,7 @@ class ModelCreator(QTabWidget):
 
 		def fun_train_model(self):
 
+			# Save the edited network definition to temporary module (network_def.py)
 			with open('code-segments.json') as json_file:
 				data = json.load(json_file)
 				imports = data['pytorch']['imports']
@@ -123,6 +124,7 @@ class ModelCreator(QTabWidget):
 			with open('network_def.py', 'w') as f:
 				f.write(code)
 
+			# Save the edited training code block to temporary module (train.py)
 			code_train = self.textedit_train.toPlainText()
 			code = imports + '\nglobal Model\n' + code_train
 			with open('train.py', 'w') as f:
@@ -165,31 +167,17 @@ class ModelCreator(QTabWidget):
 				self.dataset = dataset			
 
 			def run(self):
-				num_epochs = 5
-				batch_size = 64
-				learning_rate = 0.001
 				import network_def
 				import train
 
 				# Check if dataset is built-in or custom created from script
-				if isinstance(config.config[self.dataset]['datasets'], list):
-					train_dataset = config.config[self.dataset]["datasets"][0]
-					train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
-							                                   batch_size=batch_size, 
-							                                   shuffle=True)
-				elif isinstance(config.config[self.dataset]['datasets'], str):
-					loader_path = config.config[self.dataset]['datasets']
-					
-					spec = importlib.util.spec_from_file_location("module.name", loader_path)
-					foo = importlib.util.module_from_spec(spec)
-					spec.loader.exec_module(foo)
-					train_loader, test_loader = foo.load()
+				train_loader = get_trainloader(self.dataset)
 
 				model = network_def.Model()
 				model = model.to(device)
 
 				print('starting trainer')
-				model = train.train(train_loader, config.config[self.dataset]['transform'], model, num_epochs, learning_rate, device)
+				model = train.train(train_loader, config.config[self.dataset]['transform'], model, device)
 
 				self.finished_with_model.emit(model)
 
@@ -269,6 +257,7 @@ class ModelCreator(QTabWidget):
 
 				with open('network_def.py', 'w') as f:
 					f.write(code)
+				import network_def
 				importlib.reload(network_def)
 
 				try:

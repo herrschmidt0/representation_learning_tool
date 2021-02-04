@@ -75,13 +75,13 @@ class MainWindow(QMainWindow):
 	@pyqtSlot(object)
 	def receive_created_model(self, model):
 
-		self.model_transformer.receive_model(model)
+		self.model_transformer.receive_model(self.dataset, model)
 		self.visualizer.receive_dataset_model(self.dataset, model)
 
-	@pyqtSlot(object)
-	def receive_transformed_model(self, model):
+	@pyqtSlot(object, object)
+	def receive_transformed_model(self, model, params):
 
-		self.visualizer.receive_dataset_model(self.dataset, model)
+		self.visualizer.receive_dataset_model(self.dataset, model, params)
 
 
 if __name__ == '__main__':

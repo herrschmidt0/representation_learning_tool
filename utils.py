@@ -9,6 +9,9 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import torch
+import importlib.util
+
+import config
 
 class MplCanvas(FigureCanvasQTAgg):
 	def __init__(self, parent=None, width=5, height=4, dpi=100):
@@ -176,3 +179,49 @@ def draw_neural_net(ax, left, right, bottom, top, layer_sizes, graph):
 					line = plt.Line2D([n*h_spacing + left, (n + 1)*h_spacing + left],
 					                  [layer_top_a - m*v_spacing, layer_top_b - o*v_spacing], c='k')
 					ax.add_artist(line)
+
+
+def load_module_from_path(path):
+	spec = importlib.util.spec_from_file_location("module.name", path)
+	foo = importlib.util.module_from_spec(spec)
+	spec.loader.exec_module(foo)
+	return foo
+
+
+def get_trainloader(dataset):
+
+	if isinstance(config.config[dataset]['datasets'], list):
+		batch_size = 32
+		train_dataset = config.config[dataset]["datasets"][0]
+		train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
+				                                   batch_size=batch_size, 
+				                                   shuffle=True)
+	elif isinstance(config.config[dataset]['datasets'], str):
+		loader_path = config.config[dataset]['datasets']
+		
+		spec = importlib.util.spec_from_file_location("module.name", loader_path)
+		foo = importlib.util.module_from_spec(spec)
+		spec.loader.exec_module(foo)
+		train_loader, test_loader = foo.load()
+
+	return train_loader
+
+
+def get_testloader(dataset, batch_size):
+
+	# Check if dataset is built-in or custom created from script
+	if isinstance(config.config[dataset]['datasets'], list):
+		test_dataset = config.config[dataset]["datasets"][1]
+		test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
+				                                   batch_size=batch_size, 
+				                                   shuffle=True)
+	elif isinstance(config.config[dataset]['datasets'], str):
+		loader_path = config.config[dataset]['datasets']
+		
+		spec = importlib.util.spec_from_file_location("module.name", loader_path)
+		foo = importlib.util.module_from_spec(spec)
+		spec.loader.exec_module(foo)
+		train_loader, test_loader = foo.load()
+
+	return test_loader
+

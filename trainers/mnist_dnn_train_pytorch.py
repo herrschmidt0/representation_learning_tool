@@ -1,4 +1,7 @@
-def train(train_loader, transform, model, num_epochs, learning_rate, device):
+def train(train_loader, transform, model, device):
+
+    num_epochs = 15
+    learning_rate = 0.001 
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
