@@ -1,3 +1,5 @@
+import torch
+import torch.nn as nn
 from torch.quantization import QuantStub, DeQuantStub
 
 input_size = 784

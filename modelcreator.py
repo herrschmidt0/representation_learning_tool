@@ -114,19 +114,21 @@ class ModelCreator(QTabWidget):
 		def fun_train_model(self):
 
 			# Save the edited network definition to temporary module (network_def.py)
+			'''
 			with open('code-segments.json') as json_file:
 				data = json.load(json_file)
 				imports = data['pytorch']['imports']
+			'''
 
 			code_definition = self.textedit_network.toPlainText()
-			code = imports + '\nglobal Model\n' + code_definition
+			code = '\nglobal Model\n' + code_definition
 			print('writing code to network_def', len(code))
 			with open('network_def.py', 'w') as f:
 				f.write(code)
 
 			# Save the edited training code block to temporary module (train.py)
 			code_train = self.textedit_train.toPlainText()
-			code = imports + '\nglobal Model\n' + code_train
+			code = '\nglobal Model\n' + code_train
 			with open('train.py', 'w') as f:
 				f.write(code)
 
@@ -176,8 +178,7 @@ class ModelCreator(QTabWidget):
 				model = network_def.Model()
 				model = model.to(device)
 
-				print('starting trainer')
-				model = train.train(train_loader, config.config[self.dataset]['transform'], model, device)
+				model = train.train(model, [train_loader, device])
 
 				self.finished_with_model.emit(model)
 

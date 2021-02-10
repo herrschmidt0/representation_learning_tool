@@ -20,9 +20,10 @@ import torchvision.transforms as transforms
 from torch.nn.utils import prune
 
 import config
+from utils import ChannelGraph, get_trainloader, load_module_from_path
 from torch_pruning import magnitude_pruning, nodewise_pruning, filter_pruning, graph_pruning
-from torch_quantization import quantize_static_post 
-from utils import ChannelGraph, get_trainloader
+import torch_quantization as torchquant
+import distiller_quantization as distillerquant
 
 
 class ModelTransformer(QTabWidget):
@@ -35,10 +36,14 @@ class ModelTransformer(QTabWidget):
 		self.tab_reset = self.ResetTab()
 		self.tab_pruning = self.PruningTab(self)
 		self.tab_quant_torch = self.QuantizationPytorch(self)
+		self.tab_quant_distiller = self.QuantizationDistiller(self)
 
 		self.addTab(self.tab_reset, 'Reset')
-		self.addTab(self.tab_pruning, 'Pruning')
+		self.addTab(self.tab_pruning, 'Pruning(PyTorch)')
 		self.addTab(self.tab_quant_torch, 'Quantization(PyTorch)')
+		self.addTab(QWidget(), 'Pruning(Distiller)')
+		self.addTab(self.tab_quant_distiller, 'Quantization(Distiller)')
+		self.addTab(QWidget(), 'XNOR')
 
 		self.tab_reset.button_reset.clicked.connect(self.reset_model)
 
@@ -50,11 +55,12 @@ class ModelTransformer(QTabWidget):
 
 		self.tab_pruning.update(model)
 		self.tab_quant_torch.update(dataset, model)
+		self.tab_quant_distiller.update(dataset, model)
 
 	def reset_model(self):
 		self.model = copy.deepcopy(self.original_model)
 		self.tab_pruning.update(self.model)
-		self.signal_model_ready.emit(self.model)
+		self.signal_model_ready.emit(self.model, dict())
 
 
 	class ResetTab(QWidget):
@@ -323,24 +329,55 @@ class ModelTransformer(QTabWidget):
 
 			if methodid == 0:
 				train_loader = get_trainloader(self.dataset)
-				self.model = quantize_static_post(self.model, train_loader, params)
-
-			params['quantized_cpu'] = True
+				self.model = torchquant.quantize_static_post(self.model, train_loader, params)
+			elif methodid == 1:
+				self.model = torchquant.quantize_dynamic(self.model, params)
+			elif methodid == 2:
+				train_loader = get_trainloader(self.dataset)
+				train_module = load_module_from_path(config.config[self.dataset]['train'])
+				self.model = torchquant.quantize_qat(self.model, train_loader=train_loader, \
+					train_fn=train_module.train, params=params)
 
 			# Send model to tester/visualizer
+			params['quantized_cpu'] = True
 			self.outer.signal_model_ready.emit(self.model, params)
 
 		class PostStatic(QWidget):
+
+			observers = [
+				'MinMax Observer',
+				'Moving Average MinMax Observer',
+				'Per Channel MinMax Observer',
+				'Moving Average Per Channel MinMax Observer',
+				'Histogram Observer'
+			]
+
 			def __init__(self):
 				super().__init__()
 				layout = QVBoxLayout()
 				self.setLayout(layout)
 
-				desc = QLabel('Post Training Static Quantization in Pytorch. Only supports 8-bit integer target weights on the CPU.')
+				desc = QLabel('Post Training Static Quantization in Pytorch.' + \
+					' It needs the QuantStub, DeQuantStub modules placed in the network definition.' + \
+					' Only supports 8-bit integer target weights on the CPU.')
 				layout.addWidget(desc)
 
+				label_observer = QLabel('Observer:')
+				self.combobox_observers = QComboBox()
+				self.combobox_observers.addItems(self.observers)
+				self.combobox_observers.setMaximumWidth(250)
+
+				self.checkbox_fuse = QCheckBox('Fuse modules')
+
+				layout.addWidget(label_observer)
+				layout.addWidget(self.combobox_observers)
+				layout.addWidget(self.checkbox_fuse)
+
 			def getValues(self):
-				return dict()
+				return {
+					'observer': self.combobox_observers.currentIndex(),
+					'fuse': self.checkbox_fuse.isChecked()
+				}
 
 		class Dynamic(QWidget):
 			def __init__(self):
@@ -360,8 +397,64 @@ class ModelTransformer(QTabWidget):
 				layout = QVBoxLayout()
 				self.setLayout(layout)
 
-				desc = QLabel('Quantization Aware Training. Re-training is required. Only supports 8-bit integer target weights on the CPU.')
+				desc = QLabel('Quantization Aware Training. Re-training is required.' + \
+					' It needs the QuantStub, DeQuantStub modules placed in the network definition.' + \
+					' Only supports 8-bit integer target weights on the CPU.' )
 				layout.addWidget(desc)
+
+			def getValues(self):
+				return dict()
+
+
+	class QuantizationDistiller(QTabWidget):
+		methods = [
+			'Post Training Static'
+		]
+
+		def __init__(self, outer):
+			super().__init__()
+			self.outer = outer
+			layout = QVBoxLayout()
+			self.setLayout(layout)
+
+			self.label = QLabel()
+			self.label.setText('Quantization using the Distiller library.')
+
+			self.controls = QStackedWidget()
+			self.controls.addWidget(self.PostStatic())
+
+			label_quanttype = QLabel('Quantization type')
+			self.dropwdown_quanttype = QComboBox()
+			self.dropwdown_quanttype.setMaximumWidth(250)
+			self.dropwdown_quanttype.addItems(self.methods)
+			self.dropwdown_quanttype.currentIndexChanged.connect(self.controls.setCurrentIndex)
+			self.dropwdown_quanttype.setCurrentIndex(0)
+
+			self.button_execute = QPushButton('Quantize model!')
+			self.button_execute.setMaximumWidth(180)
+			self.button_execute.clicked.connect(lambda: self.execute(self.dropwdown_quanttype.currentIndex(), \
+				self.controls.currentWidget().getValues()))
+			self.button_execute.setVisible(False)
+
+			layout.addWidget(self.label)
+			layout.addWidget(label_quanttype)
+			layout.addWidget(self.dropwdown_quanttype)
+			layout.addWidget(self.controls)
+			layout.addWidget(self.button_execute)
+
+		def update(self, dataset, model):
+			self.dataset = dataset
+			self.model = model
+			self.button_execute.setVisible(True)
+
+		def execute(self, methodid, params):
+
+			if methodid == 0:
+				self.model = distillerquant.quantize_static_post(self.model)
+
+		class PostStatic(QWidget):
+			def __init__(self):
+				super().__init__()
 
 			def getValues(self):
 				return dict()

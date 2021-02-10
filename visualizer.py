@@ -103,8 +103,8 @@ class Visualizer(QTabWidget):
 					layer_type = 'DeQuantStub'
 				elif 'QuantStub' in str(child):
 					layer_type = 'QuantStub'
-				elif 'QuantizedLinear' in str(child):
-					layer_type = 'QuantizedLinear'
+				#elif 'QuantizedLinear' in str(child):
+					#layer_type = 'QuantizedLinear'
 				else:
 					layer_type = str(child)
 
@@ -291,7 +291,7 @@ class Visualizer(QTabWidget):
 				accuracy = correct / total
 
 			# Display results
-			report = classification_report(y_true, y_pred)
+			report = classification_report(y_true, y_pred, digits=3)
 			self.label_results.setText(report)
 			print('Test results updated.')
 

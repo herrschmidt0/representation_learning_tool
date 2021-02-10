@@ -1,4 +1,16 @@
-def train(train_loader, transform, model, device):
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import torch.backends.cudnn as cudnn
+import torchvision
+import torchvision.transforms as transforms
+
+def train(model, args):
+
+    train_loader = args[0]
+    device = args[1]
+    print(type(train_loader))
 
     num_epochs = 15
     learning_rate = 0.001 
@@ -13,7 +25,7 @@ def train(train_loader, transform, model, device):
         for i, (images, labels) in enumerate(train_loader):  
             # Move tensors to the configured device
             #images = images.reshape(-1, 28*28).to(device)
-            images = transform(images)
+            #images = transform(images)
             images = images.to(device)
             labels = labels.to(device)
             

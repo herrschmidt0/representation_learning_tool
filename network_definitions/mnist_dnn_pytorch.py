@@ -1,3 +1,6 @@
+import torch
+import torch.nn as nn
+
 input_size = 784
 hidden_size = 500
 num_classes = 10
