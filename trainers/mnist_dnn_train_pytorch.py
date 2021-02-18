@@ -10,9 +10,7 @@ def train(model, args):
 
     train_loader = args[0]
     device = args[1]
-    print(type(train_loader))
-
-    num_epochs = 15
+    num_epochs = args[2]
     learning_rate = 0.001 
 
     # Loss and optimizer

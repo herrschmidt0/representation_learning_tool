@@ -32,26 +32,7 @@ config = {
 		"train": "trainers/mnist_dnn_train_pytorch.py",
 		"weights": "exported_models/dnn_mnist.pth"
 	},
-	"mnist-1d-quant-torch": {
-		"datasets": [
-			torchvision.datasets.MNIST(root='../../data', 
-                                       train=True,  
-                                       download=True,
-                                       transform=transforms.Compose([
-                                       		transforms.ToTensor(),
-                                       		ReshapeTransform((28*28,))
-                                       	])), 
-			torchvision.datasets.MNIST(root='../../data', 
-                                       train=False, 
-                                       transform=transforms.Compose([
-                                       		transforms.ToTensor(),
-                                       		ReshapeTransform((28*28,))
-                                       	]))
-		],
-		"network-def": "network_definitions/mnist_dnn_quantstub.py",
-		"train": "trainers/mnist_dnn_train_pytorch.py",
-		"weights": "exported_models/dnn_mnist.pth"
-	},
+	
 	"mnist-2d": {
 		"datasets": [
 			torchvision.datasets.MNIST(root='../../data', 

@@ -261,6 +261,7 @@ class Visualizer(QTabWidget):
 			else:
 				device = 'cpu'
 			print('Device:', device)
+			#model.to(device)
 
 			# Get dataset loader
 			if isinstance(dataset, str):
@@ -320,6 +321,7 @@ class Visualizer(QTabWidget):
 			test_loader = get_testloader(dataset, 4)
 			for test_images, _ in test_loader:  
 				sample = test_images[0]
+				break
 
 			x = torch.randn(16, *sample.shape).to(device)
 

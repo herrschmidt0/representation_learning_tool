@@ -1,0 +1,117 @@
+fc1:
+  bits_activations: 4
+  bits_weights: null
+  bits_bias: null
+  mode: &id001
+    activations: SYMMETRIC
+    weights: SYMMETRIC
+  clip_acts: NONE
+  clip_n_stds: null
+  clip_half_range: false
+  per_channel_wts: true
+  scale_approx_mult_bits: null
+  inputs_quant_auto_fallback: true
+  fpq_module: null
+  model_activation_stats: &id002
+    fc1:
+      inputs:
+        0:
+          min: 0.0
+          max: 1.0
+          avg_min: 0.0
+          avg_max: 0.9992668630395053
+          mean: 0.1332534697591042
+          std: 0.31086799810585325
+          b: 0.2176753517721786
+          shape: (32, 784)
+          total_numel: 301056
+      output:
+        min: -13.574333190917969
+        max: 11.86138916015625
+        avg_min: -7.032489259924942
+        avg_max: 4.920126584795339
+        mean: -0.40657374572753907
+        std: 1.7872074739696622
+        b: 1.3357848002115886
+        shape: (32, 500)
+        total_numel: 192000
+    relu:
+      inputs:
+        0:
+          min: -13.574333190917969
+          max: 11.86138916015625
+          avg_min: -7.032489259924942
+          avg_max: 4.920126584795339
+          mean: -0.40657374572753907
+          std: 1.7872074739696622
+          b: 1.3357848002115886
+          shape: (32, 500)
+          total_numel: 192000
+      output:
+        min: 0.0
+        max: 11.86138916015625
+        avg_min: 0.0
+        avg_max: 4.920126584795339
+        mean: 0.4649148432413737
+        std: 0.836941259950435
+        b: 0.6076482645670573
+        shape: (32, 500)
+        total_numel: 192000
+    fc2:
+      inputs:
+        0:
+          min: 0.0
+          max: 11.86138916015625
+          avg_min: 0.0
+          avg_max: 4.920126584795339
+          mean: 0.4649148432413737
+          std: 0.836941259950435
+          b: 0.6076482645670573
+          shape: (32, 500)
+          total_numel: 192000
+      output:
+        min: -32.84526824951172
+        max: 22.239299774169922
+        avg_min: -16.384188815022625
+        avg_max: 10.048963831716074
+        mean: -5.763783041636149
+        std: 7.68224507842512
+        b: 5.678680674235026
+        shape: (32, 10)
+        total_numel: 3840
+  overrides: null
+relu:
+  bits_activations: 4
+  bits_weights: null
+  bits_bias: null
+  mode: *id001
+  clip_acts: NONE
+  clip_n_stds: null
+  clip_half_range: false
+  per_channel_wts: true
+  scale_approx_mult_bits: null
+  inputs_quant_auto_fallback: true
+  fpq_module: null
+  model_activation_stats: *id002
+  overrides: null
+fc2:
+  bits_activations: 4
+  bits_weights: null
+  bits_bias: null
+  mode: *id001
+  clip_acts: NONE
+  clip_n_stds: null
+  clip_half_range: false
+  per_channel_wts: true
+  scale_approx_mult_bits: null
+  inputs_quant_auto_fallback: true
+  fpq_module: null
+  model_activation_stats: *id002
+  overrides: null
+linear_quant_params:
+  fc1.output_scale: 0.5525133013725281
+  fc1.output_zero_point: 0.0
+  relu.output_scale: 0.6323036551475525
+  relu.output_zero_point: 0.0
+  fc2.output_scale: 0.2283433973789215
+  fc2.output_zero_point: 0.0

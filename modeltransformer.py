@@ -37,13 +37,15 @@ class ModelTransformer(QTabWidget):
 		self.tab_pruning = self.PruningTab(self)
 		self.tab_quant_torch = self.QuantizationPytorch(self)
 		self.tab_quant_distiller = self.QuantizationDistiller(self)
+		self.tab_xnor = self.XNOR(self)
 
 		self.addTab(self.tab_reset, 'Reset')
 		self.addTab(self.tab_pruning, 'Pruning(PyTorch)')
 		self.addTab(self.tab_quant_torch, 'Quantization(PyTorch)')
 		self.addTab(QWidget(), 'Pruning(Distiller)')
 		self.addTab(self.tab_quant_distiller, 'Quantization(Distiller)')
-		self.addTab(QWidget(), 'XNOR')
+		self.addTab(self.tab_xnor, 'XNOR')
+		self.addTab(QWidget(), 'Quantization(TensorRT)')
 
 		self.tab_reset.button_reset.clicked.connect(self.reset_model)
 
@@ -56,10 +58,14 @@ class ModelTransformer(QTabWidget):
 		self.tab_pruning.update(model)
 		self.tab_quant_torch.update(dataset, model)
 		self.tab_quant_distiller.update(dataset, model)
+		self.tab_xnor.update(dataset, model)
 
 	def reset_model(self):
 		self.model = copy.deepcopy(self.original_model)
 		self.tab_pruning.update(self.model)
+		self.tab_quant_torch.update(self.dataset, self.model)
+		self.tab_quant_distiller.update(self.dataset, self.model)
+		self.tab_xnor.update(self.dataset, self.model)
 		self.signal_model_ready.emit(self.model, dict())
 
 
@@ -358,7 +364,6 @@ class ModelTransformer(QTabWidget):
 				self.setLayout(layout)
 
 				desc = QLabel('Post Training Static Quantization in Pytorch.' + \
-					' It needs the QuantStub, DeQuantStub modules placed in the network definition.' + \
 					' Only supports 8-bit integer target weights on the CPU.')
 				layout.addWidget(desc)
 
@@ -398,7 +403,6 @@ class ModelTransformer(QTabWidget):
 				self.setLayout(layout)
 
 				desc = QLabel('Quantization Aware Training. Re-training is required.' + \
-					' It needs the QuantStub, DeQuantStub modules placed in the network definition.' + \
 					' Only supports 8-bit integer target weights on the CPU.' )
 				layout.addWidget(desc)
 
@@ -417,8 +421,10 @@ class ModelTransformer(QTabWidget):
 			layout = QVBoxLayout()
 			self.setLayout(layout)
 
+			from torch.onnx.symbolic_helper import _export_onnx_opset_version as opset_versionx
 			self.label = QLabel()
-			self.label.setText('Quantization using the Distiller library.')
+			self.label.setText('Quantization using the Distiller library. ' + \
+				'ONNX opset version: ' + str(opset_versionx))
 
 			self.controls = QStackedWidget()
 			self.controls.addWidget(self.PostStatic())
@@ -450,11 +456,68 @@ class ModelTransformer(QTabWidget):
 		def execute(self, methodid, params):
 
 			if methodid == 0:
-				self.model = distillerquant.quantize_static_post(self.model)
+				train_loader = get_trainloader(self.dataset)
+				self.model = distillerquant.quantize_static_post(self.model, train_loader, params)
+
+			params['quantized_cpu'] = True
+			self.outer.signal_model_ready.emit(self.model, params)
 
 		class PostStatic(QWidget):
 			def __init__(self):
 				super().__init__()
+				layout = QVBoxLayout()
+				self.setLayout(layout)
+
+				label_mode = QLabel('Quantization mode')
+				self.dropdown_mode = QComboBox()
+				self.dropdown_mode.setMaximumWidth(200)
+				self.dropdown_mode.addItems(['Symmetric', 'Symmetric-Restricted', 'Assymetric-Unsigned', 'Assymetric-Signed'])
+
+				label_bits_weights = QLabel('Weight bits')
+				self.edit_bits_weights = QLineEdit()
+				self.edit_bits_weights.setMaximumWidth(50)
+
+				label_bits_act = QLabel('Activation bits')
+				self.edit_bits_act = QLineEdit()
+				self.edit_bits_act.setMaximumWidth(50)
+
+				self.check_per_channel = QCheckBox('Per-channel quantization')
+
+				layout.addWidget(label_mode)
+				layout.addWidget(self.dropdown_mode)
+				layout.addWidget(label_bits_weights)
+				layout.addWidget(self.edit_bits_weights)
+				layout.addWidget(label_bits_act)
+				layout.addWidget(self.edit_bits_act)
+				layout.addWidget(self.check_per_channel)
+
 
 			def getValues(self):
-				return dict()
+				return {
+					'mode': self.dropdown_mode.currentIndex(),
+					'bits-weight': int(self.edit_bits_weights.text()),
+					'bits-act': int(self.edit_bits_act.text()),
+					'per-channel': self.check_per_channel.isChecked()
+				}
+
+	class XNOR(QWidget):
+		
+		def __init__(self, outer):
+			super().__init__()
+			self.outer = outer
+			layout = QVBoxLayout()
+			self.setLayout(layout)
+
+			self.label_info = QLabel('PyTorch implementation of "XNOR-Net: ImageNet Classification Using Binary Convolutional Neural Networks".' + \
+					' Applicable only to Convolutional Nets.')
+			layout.addWidget(self.label_info)
+
+			self.button_execute = QPushButton('Quantize model!')
+			self.button_execute.setMaximumWidth(150)
+			self.button_execute.setVisible(False)
+			layout.addWidget(self.button_execute)
+
+		def update(self, dataset, model):
+			self.dataset = dataset
+			self.model = model
+			self.button_execute.setVisible(True)
