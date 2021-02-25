@@ -62,7 +62,7 @@ def load():
 	full_dataset = TensorDataset(tensor_x, tensor_y)
 
 	# Split to train-test sets
-	len_train = int(0.1*len(tensor_x))
+	len_train = int(0.8*len(tensor_x))
 	len_test = len(tensor_x) - len_train
 	train_dataset, test_dataset = random_split(full_dataset, [len_train, len_test])
 

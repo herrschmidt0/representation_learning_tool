@@ -87,6 +87,10 @@ class ModelCreator(QTabWidget):
 			self.textedit_train = QTextEdit()
 			self.textedit_train.setFixedHeight(300)
 		
+			# Nr of epochs
+			label_epochs = QLabel('Number of epochs:')
+			self.edit_epochs = QLineEdit()
+			self.edit_epochs.setMaximumWidth(75)
 
 			# Execute button
 			button_run = QPushButton("Train model!")
@@ -106,6 +110,8 @@ class ModelCreator(QTabWidget):
 			layout.addWidget(self.textedit_network)
 			layout.addWidget(label_train)
 			layout.addWidget(self.textedit_train)
+			layout.addWidget(label_epochs)
+			layout.addWidget(self.edit_epochs)
 			layout.addWidget(button_run)
 			layout.addWidget(self.label_epoch)
 			layout.addWidget(self.label_loss)
@@ -134,7 +140,7 @@ class ModelCreator(QTabWidget):
 
 			# Create and run trainer thread
 			self.thread = QThread()
-			self.worker = self.TrainWorker(self.outer.dataset)
+			self.worker = self.TrainWorker(self.outer.dataset, int(self.edit_epochs.text()))
 
 			self.worker.moveToThread(self.thread)
 
@@ -164,9 +170,10 @@ class ModelCreator(QTabWidget):
 			finished_with_model = pyqtSignal(object)
 			progress = pyqtSignal(int)
 
-			def __init__(self, dataset):
+			def __init__(self, dataset, epochs):
 				super().__init__()
-				self.dataset = dataset			
+				self.dataset = dataset
+				self.epochs = epochs	
 
 			def run(self):
 				import network_def
@@ -178,7 +185,7 @@ class ModelCreator(QTabWidget):
 				model = network_def.Model()
 				model = model.to(device)
 
-				model = train.train(model, [train_loader, device])
+				model = train.train(model, [train_loader, device, self.epochs])
 
 				self.finished_with_model.emit(model)
 

@@ -29,7 +29,7 @@ config = {
                                        	]))
 		],
 		"network-def": "network_definitions/mnist_dnn_pytorch.py",
-		"train": "trainers/mnist_dnn_train_pytorch.py",
+		"train": "trainers/generic_trainer_pytorch.py",
 		"weights": "exported_models/dnn_mnist.pth"
 	},
 	
@@ -46,13 +46,26 @@ config = {
 		"transform": lambda x: x,
 		
 		"network-def": "network_definitions/mnist_cnn_pytorch.py",
-		"train": "trainers/mnist_dnn_train_pytorch.py",
+		"train": "trainers/generic_trainer_pytorch.py",
 		"weights": "exported_models/cnn_mnist.pt"
 	},
+
 	"ct-medical-images": {
 		"datasets": 'dataset_loaders/ctimage_loader.py',
 		"transform": lambda x: x, 
 		"network-def": "network_definitions/ctimage_lenet.py",
 		"train": "trainers/ctimage_train.py"
+	},
+
+	"rsd-dnn": {
+		"datasets": 'dataset_loaders/rsd_loader_dnn.py',
+		"network-def": "network_definitions/rsd_dnn.py",
+		"train": "trainers/generic_trainer_pytorch.py",
+		"weights": "exported_models/dnn_rsd.pt"
+	},
+	"rsd-cnn": {
+		"datasets": 'dataset_loaders/rsd_loader_cnn.py',
+		"network-def": "network_definitions/rsd_cnn.py",
+		"train": "trainers/generic_trainer_pytorch.py"
 	}
 }

@@ -104,7 +104,7 @@ def quantize_qat(model, train_loader, train_fn, params):
 
 	torch.quantization.prepare_qat(quant_model, inplace=True)
 	quant_model.train()
-	quant_model = train_fn(quant_model, [train_loader, cuda, 7])
+	quant_model = train_fn(quant_model, [train_loader, cuda, 15])
 	quant_model.to(cpu)
 
 	torch.quantization.convert(quant_model, inplace=True)

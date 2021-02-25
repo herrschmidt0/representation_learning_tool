@@ -13,7 +13,6 @@ def train(model, args):
     train_loader = args[0]
     device = args[1]
     num_epochs = args[2]
-
     learning_rate = 0.001 
 
     # Loss and optimizer
@@ -23,15 +22,13 @@ def train(model, args):
     # Train the model
     total_step = len(train_loader)
     for epoch in range(num_epochs):
-        for i, (images, labels) in enumerate(train_loader):  
+        for i, (data, labels) in enumerate(train_loader):  
             # Move tensors to the configured device
-            #images = images.reshape(-1, 28*28).to(device)
-            #images = transform(images)
-            images = images.to(device)
+            data = data.to(device)
             labels = labels.to(device)
             
             # Forward pass
-            outputs = model(images)
+            outputs = model(data)
             loss = criterion(outputs, labels)
             
             # Backprpagation and optimization
@@ -39,7 +36,7 @@ def train(model, args):
             loss.backward()
             optimizer.step()
             
-            if (i+1) % 100 == 0:
+            if (i+1) % 8 == 0:
                 print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}' 
                        .format(epoch+1, num_epochs, i+1, total_step, loss.item()))
 
