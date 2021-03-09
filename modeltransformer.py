@@ -20,11 +20,11 @@ import torchvision.transforms as transforms
 from torch.nn.utils import prune
 
 import config
-from utils import ChannelGraph, get_trainloader, load_module_from_path
+from utils import ChannelGraph, get_trainloader, get_testloader, load_module_from_path
 from torch_pruning import magnitude_pruning, nodewise_pruning, filter_pruning, graph_pruning
 import torch_quantization as torchquant
 import distiller_quantization as distillerquant
-
+import tensorrt_quantization as tensorrtquant
 
 class ModelTransformer(QTabWidget):
 
@@ -38,6 +38,7 @@ class ModelTransformer(QTabWidget):
 		self.tab_quant_torch = self.QuantizationPytorch(self)
 		self.tab_quant_distiller = self.QuantizationDistiller(self)
 		self.tab_xnor = self.XNOR(self)
+		self.tab_tensorrt = self.QuantizationTensorRT(self)
 
 		self.addTab(self.tab_reset, 'Reset')
 		self.addTab(self.tab_pruning, 'Pruning(PyTorch)')
@@ -45,7 +46,7 @@ class ModelTransformer(QTabWidget):
 		self.addTab(QWidget(), 'Pruning(Distiller)')
 		self.addTab(self.tab_quant_distiller, 'Quantization(Distiller)')
 		self.addTab(self.tab_xnor, 'XNOR')
-		self.addTab(QWidget(), 'Quantization(TensorRT)')
+		self.addTab(self.tab_tensorrt, 'Quantization(TensorRT)')
 
 		self.tab_reset.button_reset.clicked.connect(self.reset_model)
 
@@ -59,6 +60,7 @@ class ModelTransformer(QTabWidget):
 		self.tab_quant_torch.update(dataset, model)
 		self.tab_quant_distiller.update(dataset, model)
 		self.tab_xnor.update(dataset, model)
+		self.tab_tensorrt.update(dataset, model)
 
 	def reset_model(self):
 		self.model = copy.deepcopy(self.original_model)
@@ -66,6 +68,8 @@ class ModelTransformer(QTabWidget):
 		self.tab_quant_torch.update(self.dataset, self.model)
 		self.tab_quant_distiller.update(self.dataset, self.model)
 		self.tab_xnor.update(self.dataset, self.model)
+		self.tab_tensorrt.update(self.dataset, self.model)
+
 		self.signal_model_ready.emit(self.model, dict())
 
 
@@ -521,3 +525,52 @@ class ModelTransformer(QTabWidget):
 			self.dataset = dataset
 			self.model = model
 			self.button_execute.setVisible(True)
+
+
+	class QuantizationTensorRT(QWidget):
+
+		def __init__(self, outer):
+			super().__init__()
+			self.outer = outer
+			layout = QVBoxLayout()
+			self.setLayout(layout)
+
+			label_info = QLabel('TensorRT low-precision inference. The model is converted to an internal, low-level representation.')
+			layout.addWidget(label_info)
+
+			label_dropdown = QLabel('Low-precision type:')
+			layout.addWidget(label_dropdown)
+			self.dropdown = QComboBox()
+			self.dropdown.setMaximumWidth(200)
+			self.dropdown.addItems(['16-bit float', '8-bit integer'])
+			layout.addWidget(self.dropdown)
+
+			self.button_execute = QPushButton('Quantize model!')
+			self.button_execute.setMaximumWidth(150)
+			self.button_execute.setVisible(False)
+			self.button_execute.clicked.connect(self.execute)
+			layout.addWidget(self.button_execute)
+
+			self.label_results = QLabel('Results:')
+			layout.addWidget(self.label_results)
+
+		def update(self, dataset, model):
+			self.dataset = dataset
+			self.model = model
+			self.button_execute.setVisible(True)
+
+		def get_values(self):
+			return {
+				'method': self.dropdown.currentIndex()
+			}
+
+		def execute(self):
+
+			train_loader = get_testloader(self.dataset, batch_size=32)
+			inference_res = tensorrtquant.tensorrt_compression(self.model, train_loader, self.get_values())
+
+			text_results = 'Results:\nAccuracy: {:.3f}\nMacro average - Precision: {:.3f}, Recall: {:.3f}\nWeighted average - Precision: {:.3f}, Recall: {:.3f}'.format(
+				inference_res['accuracy'], inference_res['macro avg']['precision'], inference_res['macro avg']['recall'],
+				inference_res['weighted avg']['precision'], inference_res['weighted avg']['recall'])
+			self.label_results.setText(text_results)
+			#self.outer.signal_model_ready.emit(self.model, params)

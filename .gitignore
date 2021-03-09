@@ -131,3 +131,6 @@ dmypy.json
 # Images
 *.png
 *.gv
+
+*.onnx
+*.cache

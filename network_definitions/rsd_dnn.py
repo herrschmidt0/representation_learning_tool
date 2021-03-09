@@ -15,6 +15,7 @@ class Model(nn.Module):
       self.out = nn.Linear(in_features=(I+3*O)//4, out_features=O)
 
   def forward(self, x):
+      #print(x.shape)
       x = self.fc1(x)
       x = self.relu1(x)
       x = self.fc2(x)

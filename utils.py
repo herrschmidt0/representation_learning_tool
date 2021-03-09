@@ -188,10 +188,9 @@ def load_module_from_path(path):
 	return foo
 
 
-def get_trainloader(dataset):
+def get_trainloader(dataset, batch_size):
 
 	if isinstance(config.config[dataset]['datasets'], list):
-		batch_size = 32
 		train_dataset = config.config[dataset]["datasets"][0]
 		train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
 				                                   batch_size=batch_size, 
