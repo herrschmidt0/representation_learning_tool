@@ -66,6 +66,7 @@ config = {
 	"rsd-cnn": {
 		"datasets": 'dataset_loaders/rsd_loader_cnn.py',
 		"network-def": "network_definitions/rsd_cnn.py",
-		"train": "trainers/generic_trainer_pytorch.py"
+		"train": "trainers/generic_trainer_pytorch.py",
+		"weights": "exported_models/cnn_rsd.pt"
 	}
 }

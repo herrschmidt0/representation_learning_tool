@@ -10,6 +10,8 @@ import tensorrt as trt
 TRT_LOGGER = trt.Logger()
 #TRT_LOGGER = trt.Logger(trt.Logger.VERBOSE)
 
+def GiB(val):
+    return val * 1 << 30
 
 class BatchStream():
 	def __init__(self, batch_size, dataloader):
@@ -76,7 +78,7 @@ def build_engine(onnx_file_path, method, dataloader=None):
 	print('Completed parsing of ONNX file')
 	
 	# allow TensorRT to use up to 1GB of GPU memory for tactic selection
-	builder.max_workspace_size = 1 << 30
+	builder.max_workspace_size = GiB(1) #1 << 30
 	builder.max_batch_size = 32
 	
 	if method == 0:
@@ -136,20 +138,33 @@ def tensorrt_compression(model, dataloader, params):
 	# Get dataset (sizes and data)
 	full_data = torch.empty(0)
 	full_labels = torch.empty(0)
+	batch_size = None
 	for data, labels in dataloader:
 		full_data = torch.cat((full_data, data))
 		full_labels = torch.cat((full_labels, labels))
+		batch_size = data.shape[0]
 		
+
+	full_labels = full_labels[:256]
+	full_data =  full_data[:256]
 
 	len_data = full_labels.shape[0]
 	nr_classes = int(torch.max(full_labels)+1)
 	full_data = full_data.to('cuda')
-	#print(full_data.shape)
+	print(full_data.shape)
 
-	if params['method'] == 1:
+	# Export to ONNX
+	if params['method'] == 0:
+
+		# Export dynamic batch model
+		mname_dyn_batch = 'model_dynbatch.onnx'
+		torch.onnx.export(model, full_data, mname_dyn_batch, input_names=['input'], 
+		                  output_names=['output'], export_params=True, opset_version=12)
+
+	elif params['method'] == 1:
 		# Export fixed batch model
 		mname_fixed_batch = 'model_fixedbatch.onnx'
-		torch.onnx.export(model, full_data[:32], mname_fixed_batch, input_names=['input'], 
+		torch.onnx.export(model, full_data[:batch_size], mname_fixed_batch, input_names=['input'], 
 		                  output_names=['output'], export_params=True)
 		
 		# Export dynamic batch model
@@ -159,12 +174,7 @@ def tensorrt_compression(model, dataloader, params):
 		# Build engine for calibration
 		engine2, context2 = build_engine(mname_fixed_batch, method=params['method'], dataloader=dataloader)
 	
-	elif params['method'] == 0:
 
-		# Export dynamic batch model
-		mname_dyn_batch = 'model_dynbatch.onnx'
-		torch.onnx.export(model, full_data, mname_dyn_batch, input_names=['input'], 
-		                  output_names=['output'], export_params=True)
 	
 	# Build engine 
 	engine, context = build_engine(mname_dyn_batch, method=params['method'], dataloader=dataloader)

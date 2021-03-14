@@ -188,7 +188,7 @@ def load_module_from_path(path):
 	return foo
 
 
-def get_trainloader(dataset, batch_size):
+def get_trainloader(dataset, batch_size=32):
 
 	if isinstance(config.config[dataset]['datasets'], list):
 		train_dataset = config.config[dataset]["datasets"][0]
@@ -206,7 +206,7 @@ def get_trainloader(dataset, batch_size):
 	return train_loader
 
 
-def get_testloader(dataset, batch_size):
+def get_testloader(dataset, batch_size=32):
 
 	# Check if dataset is built-in or custom created from script
 	if isinstance(config.config[dataset]['datasets'], list):
