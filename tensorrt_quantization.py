@@ -112,12 +112,12 @@ def build_engine(onnx_file_path, method, dataloader=None):
 
 def allocate(engine, context):
 
-	print('Number of bindings:', engine.num_bindings)
+	#print('Number of bindings:', engine.num_bindings)
 	
 	# Calculate binding size
 	input_size = trt.volume(engine.get_binding_shape(0)) #* engine.max_batch_size
 	input_dtype = trt.nptype(engine.get_binding_dtype(0))
-	print('Input binding shape:', engine.get_binding_shape(0), 'Input dtype:', engine.get_binding_dtype(0))
+	#print('Input binding shape:', engine.get_binding_shape(0), 'Input dtype:', engine.get_binding_dtype(0))
 	
 	output_size = trt.volume(engine.get_binding_shape(1)) #* engine.max_batch_size
 	output_dtype = trt.nptype(engine.get_binding_dtype(1))
@@ -140,13 +140,15 @@ def tensorrt_compression(model, dataloader, params):
 	full_labels = torch.empty(0)
 	batch_size = None
 	for data, labels in dataloader:
-		full_data = torch.cat((full_data, data))
-		full_labels = torch.cat((full_labels, labels))
-		batch_size = data.shape[0]
+		if batch_size != None and data.shape[0] == batch_size:
+			full_data = torch.cat((full_data, data))
+			full_labels = torch.cat((full_labels, labels))
+		if batch_size is None:
+			batch_size = data.shape[0]
 		
 
-	full_labels = full_labels[:256]
-	full_data =  full_data[:256]
+	#full_labels = full_labels[:1024]
+	#full_data =  full_data[:1024]
 
 	len_data = full_labels.shape[0]
 	nr_classes = int(torch.max(full_labels)+1)
@@ -182,30 +184,98 @@ def tensorrt_compression(model, dataloader, params):
 	# Allocate space 
 	host_input, host_output, device_input, device_output = allocate(engine, context)
 
-	# Copy data to cuda
+	y_preds_all = []
+	full_data = full_data.to('cpu')
+
+	# ----------
+
 	stream = cuda.Stream()
 	full_data = full_data.to('cpu')
+	#data = data.detach().cpu().numpy()
 	np.copyto(host_input, full_data.flatten())
+	#np.copyto(host_input, full_data.flatten())
 	#host_input = np.array(test_data_flat, dtype=np.float32, order='C')
-	cuda.memcpy_htod_async(device_input, host_input, stream)
+	cuda.memcpy_htod(device_input, host_input)
 
 	# Run inference
-	print('Running inference...')
-	context.execute_async(bindings=[int(device_input), int(device_output)], stream_handle=stream.handle)
+	context.execute(bindings=[int(device_input), int(device_output)], batch_size=32)
 	
 	# Copy results from cuda
-	cuda.memcpy_dtoh_async(host_output, device_output, stream)
+	cuda.memcpy_dtoh(host_output, device_output)
+	
+	# Run evaluation	
+	y_preds = np.zeros(shape=(len_data*nr_classes)) 
+	np.copyto(y_preds, host_output)
+
+	y_preds = np.resize(y_preds, (len_data, nr_classes))
+	y_preds = np.argmax(y_preds, axis=1)
+
+	return jsonres
+
+
+
+'''
+# Old, batched version
+
+
+	y_preds = []
+	i = 0
+	for data, labels in dataloader:
+
+		print('Batch {} of {}'.format(i, int(len_data/batch_size)), end='\r')
+		i=i+1
+		if data.shape[0] != batch_size:
+			break
+
+		# Copy data to cuda
+		stream = cuda.Stream()
+		#full_data = full_data.to('cpu')
+		data = data.detach().cpu().numpy()
+		np.copyto(host_input, data.flatten())
+		#np.copyto(host_input, full_data.flatten())
+		#host_input = np.array(test_data_flat, dtype=np.float32, order='C')
+		cuda.memcpy_htod(device_input, host_input)
+
+		# Run inference
+		context.execute_v2(bindings=[int(device_input), int(device_output)])
+		
+		# Copy results from cuda
+		cuda.memcpy_dtoh(host_output, device_output)
+		stream.synchronize()
+		
+		# Run evaluation	
+		y_preds_batch = np.zeros(shape=(batch_size*nr_classes)) 
+		#y_preds_batch = []
+		np.copyto(y_preds_batch, host_output)
+
+		#y_preds = np.concatenate(y_preds, y_preds_batch)
+		y_preds += y_preds_batch.tolist()
+
+
+'''
+
+
+'''
+	stream = cuda.Stream()
+	full_data = full_data.to('cpu')
+	#data = data.detach().cpu().numpy()
+	np.copyto(host_input, full_data.flatten())
+	#np.copyto(host_input, full_data.flatten())
+	#host_input = np.array(test_data_flat, dtype=np.float32, order='C')
+	cuda.memcpy_htod(device_input, host_input)
+
+	# Run inference
+	context.execute(bindings=[int(device_input), int(device_output)], batch_size=32)
+	
+	# Copy results from cuda
+	cuda.memcpy_dtoh(host_output, device_output)
 	stream.synchronize()
 	
 	# Run evaluation	
 	y_preds = np.zeros(shape=(len_data*nr_classes)) 
 	np.copyto(y_preds, host_output)
-	
+
 	y_preds = np.resize(y_preds, (len_data, nr_classes))
 	y_preds = np.argmax(y_preds, axis=1)
 
-	
-	jsonres = classification_report(full_labels, y_preds, output_dict=True)
-	#print(jsonres)
-
-	return jsonres
+'''

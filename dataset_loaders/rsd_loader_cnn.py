@@ -45,7 +45,7 @@ def load():
 	train_dataset, test_dataset = random_split(full_dataset, [len_train, len_test])
 
 	# Create dataloaders
-	train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=16)
-	test_dataloader = DataLoader(test_dataset, shuffle=True, batch_size=16)
+	train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=32)
+	test_dataloader = DataLoader(test_dataset, shuffle=True, batch_size=32)
 
 	return [train_dataloader, test_dataloader]
