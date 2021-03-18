@@ -184,9 +184,7 @@ def tensorrt_compression(model, dataloader, params):
 	# Allocate space 
 	host_input, host_output, device_input, device_output = allocate(engine, context)
 
-	y_preds_all = []
-	full_data = full_data.to('cpu')
-
+	#y_preds_all = []
 	# ----------
 
 	stream = cuda.Stream()
@@ -210,6 +208,7 @@ def tensorrt_compression(model, dataloader, params):
 	y_preds = np.resize(y_preds, (len_data, nr_classes))
 	y_preds = np.argmax(y_preds, axis=1)
 
+	jsonres = classification_report(full_labels, y_preds, output_dict=True)
 	return jsonres
 
 

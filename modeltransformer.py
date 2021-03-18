@@ -566,8 +566,8 @@ class ModelTransformer(QTabWidget):
 
 		def execute(self):
 
-			train_loader = get_testloader(self.dataset, batch_size=32)
-			inference_res = tensorrtquant.tensorrt_compression(self.model, train_loader, self.get_values())
+			test_loader = get_testloader(self.dataset, batch_size=32)
+			inference_res = tensorrtquant.tensorrt_compression(self.model, test_loader, self.get_values())
 
 			text_results = 'Results:\nAccuracy: {:.3f}\nMacro average - Precision: {:.3f}, Recall: {:.3f}\nWeighted average - Precision: {:.3f}, Recall: {:.3f}'.format(
 				inference_res['accuracy'], inference_res['macro avg']['precision'], inference_res['macro avg']['recall'],

@@ -22,6 +22,10 @@ def load():
 			arr_flattened.append(spec)
 			labels_new.append(labels[i])
 
+	# Label distubution
+	hist = np.histogram(np.argmax(labels_new, axis=1), bins=8)
+	print("Label distribution:", hist, '\nTotal (label/data):', len(labels_new), len(arr_flattened))
+
 	# Normalize (Per-image normalization)
 	for i, spect in enumerate(arr_flattened):
 		arr_flattened[i] = (spect-np.mean(spect))/np.std(spect)
@@ -40,7 +44,7 @@ def load():
 	full_dataset = TensorDataset(tensor_x, tensor_y)
 
 	# Split to train-test sets
-	len_train = int(0.8*len(tensor_x))
+	len_train = int(0.9*len(tensor_x))
 	len_test = len(tensor_x) - len_train
 	train_dataset, test_dataset = random_split(full_dataset, [len_train, len_test])
 
