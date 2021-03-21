@@ -1,5 +1,8 @@
 import json
 import sys
+import time
+import psutil
+from memory_profiler import memory_usage
 import os
 import traceback
 import importlib.util
@@ -252,6 +255,25 @@ class Visualizer(QTabWidget):
 			self.label_results = QLabel()
 			layout.addWidget(self.label_results)
 
+		def eval(self, model, test_loader, device):
+			with torch.no_grad():
+
+				y_true = []
+				y_pred = []
+
+				# Start predicitons
+				for data, labels in test_loader:
+					data = data.to(device)
+					labels = labels.to(device)
+
+					outputs = model(data)
+					_, predicted = torch.max(outputs.data, 1)
+			
+					y_true += labels.tolist()
+					y_pred += predicted.tolist()
+
+			return y_true, y_pred
+
 		def update(self, dataset, model, params):
 
 			# CPU or GPU
@@ -268,31 +290,28 @@ class Visualizer(QTabWidget):
 				dataset = dataset.lower()
 				if dataset in config.config:
 					test_loader = get_testloader(dataset, self.batch_size)
-					#transform = config.config[dataset]["transform"]
 
 			# Test model on dataset
 			model.eval()
-			y_true = []
-			y_pred = []
-			with torch.no_grad():
-				correct = 0
-				total = 0
-				for data, labels in test_loader:
-					data = data.to(device)
-					labels = labels.to(device)
 
-					outputs = model(data)
-					_, predicted = torch.max(outputs.data, 1)
-					total += labels.size(0)
-					correct += (predicted == labels).sum().item()
+			time_start = time.time()
+			y_true, y_pred = self.eval(model, test_loader, device)
+			time_end = time.time()
 
-					y_true += labels.tolist()
-					y_pred += predicted.tolist()
-
-				accuracy = correct / total
+			# Mem usage
+			mem_usage = memory_usage((self.eval, (model, test_loader, device), {}))
+			def memory_usage_psutil():
+				# return the memory usage in MB
+				process = psutil.Process(os.getpid())
+				mem = process.memory_info().rss / float(2 ** 20)
+				return mem
+			print(memory_usage_psutil())
+			print(mem_usage)
 
 			# Display results
 			report = classification_report(y_true, y_pred, digits=3)
+			report += '\n Inference time: {:.5f} seconds'.format(time_end-time_start)
+			report += '\n Memory used: {:.5f} MB'.format((max(mem_usage)-min(mem_usage))/(2**20))
 			self.label_results.setText(report)
 			print('Test results updated.')
 

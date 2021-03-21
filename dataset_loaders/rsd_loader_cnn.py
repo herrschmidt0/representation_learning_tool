@@ -24,7 +24,7 @@ def load():
 
 	# Label distubution
 	hist = np.histogram(np.argmax(labels_new, axis=1), bins=8)
-	print("Label distribution:", hist, '\nTotal (label/data):', len(labels_new), len(arr_flattened))
+	#print("Label distribution:", hist, '\nTotal (label/data):', len(labels_new), len(arr_flattened))
 
 	# Normalize (Per-image normalization)
 	for i, spect in enumerate(arr_flattened):

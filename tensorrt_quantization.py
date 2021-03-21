@@ -73,7 +73,6 @@ def build_engine(onnx_file_path, method, dataloader=None):
 
 	# parse ONNX
 	with open(onnx_file_path, 'rb') as model:
-		print('Beginning ONNX file parsing')
 		parser.parse(model.read())
 	print('Completed parsing of ONNX file')
 	
@@ -140,9 +139,9 @@ def tensorrt_compression(model, dataloader, params):
 	full_labels = torch.empty(0)
 	batch_size = None
 	for data, labels in dataloader:
-		if batch_size != None and data.shape[0] == batch_size:
-			full_data = torch.cat((full_data, data))
-			full_labels = torch.cat((full_labels, labels))
+		#if batch_size != None and data.shape[0] == batch_size:
+		full_data = torch.cat((full_data, data))
+		full_labels = torch.cat((full_labels, labels))
 		if batch_size is None:
 			batch_size = data.shape[0]
 		
